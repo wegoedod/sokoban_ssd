@@ -7,6 +7,7 @@ import sokoban.save.SaveStore;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.Timer;
+import javax.swing.SwingUtilities;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -82,6 +83,10 @@ public final class App {
         canvas.requestFocusInWindow();
     }
 
+    Dimension canvasSize() {
+        return canvas.getSize();
+    }
+
     void showMainMenu() {
         setScreen(new MainMenuScreen(this));
     }
@@ -133,6 +138,11 @@ public final class App {
                 }
 
                 @Override
+                public void mouseExited(MouseEvent e) {
+                    if (screen != null) screen.mouseExited();
+                }
+
+                @Override
                 public void mouseDragged(MouseEvent e) {
                     if (screen != null) screen.mouseDragged(e.getX(), e.getY());
                 }
@@ -150,7 +160,9 @@ public final class App {
                 @Override
                 public void mouseClicked(MouseEvent e) {
                     requestFocusInWindow();
-                    if (screen != null) screen.mouseClicked(e.getX(), e.getY());
+                    if (screen != null && SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) {
+                        screen.mouseClicked(e.getX(), e.getY());
+                    }
                 }
             };
             addMouseListener(m);

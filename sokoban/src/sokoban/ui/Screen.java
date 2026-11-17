@@ -19,6 +19,9 @@ interface Screen {
     default void mouseClicked(int x, int y) {
     }
 
+    default void mouseExited() {
+    }
+
     default void mousePressed(int x, int y) {
     }
 

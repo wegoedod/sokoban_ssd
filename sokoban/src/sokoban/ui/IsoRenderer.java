@@ -8,11 +8,14 @@ import sokoban.core.TileType;
 import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
+import java.awt.geom.Area;
+import java.awt.geom.Point2D;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -26,11 +29,13 @@ import java.util.List;
  * 물체는 카메라 방향 깊이 순으로 정렬해 그리고(화가 알고리즘), 입체의 각 면은 법선으로 뒷면을 거른다.
  *
  * <p>공중에 떠 있는 물체의 높이를 읽을 수 있도록 바닥 격자(z=0), 뒤쪽 모서리 틀, 바닥 그림자,
- * 플레이어가 있는 층의 반투명 평면을 보조로 그린다. 층 강조 모드에서는 위층을 흐리게 그린다.
+ * 층 경계와 작은 층 눈금을 보조로 그린다. 층 강조 모드에서는 위층을 흐리게 그린다.
  */
 final class IsoRenderer {
     /** 월드 1칸 = S 픽셀 (scale 1일 때). */
     private static final double S = 46;
+    /** A small visual gap; game coordinates and cube sizes remain unchanged. */
+    private static final double LAYER_GAP = .10;
     private static final double[] LIGHT = norm3(0.35, 0.25, 0.9);
 
     /** 진행 중 애니메이션. t = 0..1. */
@@ -41,7 +46,35 @@ final class IsoRenderer {
     private double cosPsi, sinPsi, cosP, sinP;
     private double cx0, cy0, cz0;
     private double scale, ox, oy;
+    private double layerPitch = 1;
     private double layerZ = Double.MAX_VALUE; // 이 높이보다 위층은 흐리게 (MAX = 끔)
+
+    /** Rendering and mouse picking must use exactly the same projection and viewport. */
+    void configure(Level lv, Rectangle area, Camera cam) {
+        setCamera(lv, cam.yaw, cam.pitch);
+        fit(lv, area);
+    }
+
+    record CellProjection(Area shape, Path2D edges, Point2D.Double center) { }
+
+    CellProjection projectCell(double x, double y, double z, boolean flat) {
+        Area shape = new Area();
+        Path2D edges = new Path2D.Double();
+        if (flat) {
+            Path2D face = square(x, y, 1, z + .5);
+            shape.add(new Area(face));
+            edges.append(face, false);
+        } else {
+            for (int[] n : FACE_N) {
+                if (!facing(n[0], n[1], n[2])) continue;
+                Path2D face = poly(faceCorners(x, y, z, n));
+                shape.add(new Area(face));
+                edges.append(face, false);
+            }
+        }
+        double[] center = pt(x + .5, y + .5, layerBase(z) + .5);
+        return new CellProjection(shape, edges, new Point2D.Double(center[0], center[1]));
+    }
 
     private void setCamera(Level lv, double yawDeg, double pitchDeg) {
         double psi = Math.toRadians(45 + yawDeg);
@@ -52,8 +85,13 @@ final class IsoRenderer {
         sinP = Math.sin(p);
         cx0 = lv.w / 2.0;
         cy0 = lv.d / 2.0;
-        cz0 = lv.h / 2.0;
+        layerPitch = lv.h > 1 ? 1 + LAYER_GAP : 1;
+        cz0 = sceneHeight(lv) / 2.0;
     }
+
+    private double layerBase(double z) { return z * layerPitch; }
+
+    private double sceneHeight(Level level) { return layerBase(level.h - 1) + 1; }
 
     private double[] pt(double x, double y, double z) {
         double[] p = projectWith(cosPsi, sinPsi, cosP, sinP, x - cx0, y - cy0, z - cz0);
@@ -97,8 +135,7 @@ final class IsoRenderer {
 
     void render(Graphics2D g, Level lv, GameState st, Anim anim, Rectangle area, Camera cam, boolean layerFocus) {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        setCamera(lv, cam.yaw, cam.pitch);
-        fit(lv, area);
+        configure(lv, area, cam);
 
         // 애니메이션 상태
         int pushedFrom = -1, pushedTo = -1;
@@ -127,6 +164,8 @@ final class IsoRenderer {
         // 1) 바닥 격자와 뒤쪽 틀
         floorGrid(g, lv);
         backFrame(g, lv);
+        layerGuides(g, lv, lv.z(st.player));
+        layerPlane(g, lv, pz);
 
         // 2) 바닥 그림자 / 목표 표시 (높이 단서)
         g.setStroke(new BasicStroke(1.4f));
@@ -147,7 +186,7 @@ final class IsoRenderer {
         for (int idx = 0; idx < lv.cellCount(); idx++) {
             TileType tt = lv.tile(idx);
             final double x = lv.x(idx), y = lv.y(idx), z = lv.z(idx);
-            final double key = depth(x + 0.5, y + 0.5, z + 0.5);
+            final double key = depth(x + 0.5, y + 0.5, layerBase(z) + 0.5);
             switch (tt) {
                 case WALL -> items.add(new Item(key, 0, () -> cube(g, x, y, z, Theme.WALL, 0.55f)));
                 case HOLE -> {
@@ -175,17 +214,17 @@ final class IsoRenderer {
             if (b == pushedTo) continue;
             final double x = lv.x(b), y = lv.y(b), z = lv.z(b);
             final Color c = lv.tile(b) == TileType.GOAL ? Theme.BLOCK_ON_GOAL : Theme.BLOCK;
-            items.add(new Item(depth(x + 0.5, y + 0.5, z + 0.5), 1, () -> cube(g, x, y, z, c, 1f)));
+            items.add(new Item(depth(x + 0.5, y + 0.5, layerBase(z) + 0.5), 1, () -> cube(g, x, y, z, c, 1f)));
         }
         if (pushedTo >= 0) {
             final double fx = bx, fy = by, fz = bz;
             final boolean fin = !vanish && lv.tile(pushedTo) == TileType.GOAL && t >= 1;
             final float a = vanish ? (float) Math.max(0, 1 - t) : 1f;
-            items.add(new Item(depth(fx + 0.5, fy + 0.5, fz + 0.5), 1, () -> cube(g, fx, fy, fz,
+            items.add(new Item(depth(fx + 0.5, fy + 0.5, layerBase(fz) + 0.5), 1, () -> cube(g, fx, fy, fz,
                     fin ? Theme.BLOCK_ON_GOAL : Theme.BLOCK, a)));
         }
         final double fpx = px, fpy = py, fpz = pz;
-        items.add(new Item(depth(fpx + 0.5, fpy + 0.5, fpz + 0.5) + 1e-3, 2, () -> tetra(g, fpx, fpy, fpz)));
+        items.add(new Item(depth(fpx + 0.5, fpy + 0.5, layerBase(fpz) + 0.5) + 1e-3, 2, () -> tetra(g, fpx, fpy, fpz)));
         items.sort(Comparator.<Item>comparingDouble(Item::key).thenComparingInt(Item::order));
         for (Item it : items) it.draw().run();
 
@@ -201,8 +240,6 @@ final class IsoRenderer {
         tetra(g, fpx, fpy, fpz);
         g.setComposite(AlphaComposite.SrcOver);
 
-        // 5) 플레이어가 있는 층의 평면
-        layerPlane(g, lv, fpz);
     }
 
     /** 어떤 시점에서도 같은 배율이 되도록, 여러 yaw에서의 화면 범위 중 최대치로 맞춘다. */
@@ -219,7 +256,7 @@ final class IsoRenderer {
             for (int cx = 0; cx <= 1; cx++) {
                 for (int cy = 0; cy <= 1; cy++) {
                     for (int cz = 0; cz <= 1; cz++) {
-                        double[] p = pt(cx * lv.w, cy * lv.d, cz * lv.h);
+                        double[] p = pt(cx * lv.w, cy * lv.d, cz * sceneHeight(lv));
                         hw = Math.max(hw, Math.abs(p[0]));
                         hh = Math.max(hh, Math.abs(p[1]));
                     }
@@ -228,7 +265,8 @@ final class IsoRenderer {
         }
         cosPsi = savedCos;
         sinPsi = savedSin;
-        scale = Math.min(Math.min(area.width / 2.0 / hw, area.height / 2.0 / hh) * 0.92, 1.8);
+        double usableWidth = Math.max(1, area.width - (lv.h > 1 ? 44 : 0));
+        scale = Math.min(Math.min(usableWidth / 2.0 / hw, area.height / 2.0 / hh) * 0.92, 1.8);
         ox = area.x + area.width / 2.0;
         oy = area.y + area.height / 2.0;
     }
@@ -255,21 +293,43 @@ final class IsoRenderer {
         g.setStroke(new BasicStroke(1f));
         for (int k = -1; k <= 1; k++) {
             double[] q = c[Math.floorMod(far + k, 4)];
-            line(g, pt(q[0], q[1], 0), pt(q[0], q[1], lv.h));
+            line(g, pt(q[0], q[1], 0), pt(q[0], q[1], sceneHeight(lv)));
             if (k != 0) {
                 double[] f = c[far];
-                line(g, pt(f[0], f[1], lv.h), pt(q[0], q[1], lv.h));
+                line(g, pt(f[0], f[1], sceneHeight(lv)), pt(q[0], q[1], sceneHeight(lv)));
             }
         }
     }
 
     private void layerPlane(Graphics2D g, Level lv, double z) {
-        g.setColor(alpha(Theme.PLAYER, 0.07f));
+        z = layerBase(z);
+        g.setColor(alpha(Theme.PLAYER, 0.025f));
         g.fill(poly(pt(0, 0, z), pt(lv.w, 0, z), pt(lv.w, lv.d, z), pt(0, lv.d, z)));
-        g.setColor(alpha(Theme.PLAYER, 0.30f));
+        g.setColor(alpha(Theme.PLAYER, 0.18f));
         g.setStroke(new BasicStroke(1f));
         for (int x = 0; x <= lv.w; x++) line(g, pt(x, 0, z), pt(x, lv.d, z));
         for (int y = 0; y <= lv.d; y++) line(g, pt(0, y, z), pt(lv.w, y, z));
+    }
+
+    /** Quiet perimeter lines and one floor ruler; no solid platforms or labels on objects. */
+    private void layerGuides(Graphics2D g, Level lv, int currentLayer) {
+        if (lv.h <= 1) return;
+        double[][] corners = {{0, 0}, {lv.w, 0}, {lv.w, lv.d}, {0, lv.d}};
+        double[] left = corners[0];
+        for (double[] corner : corners) {
+            if (pt(corner[0], corner[1], 0)[0] < pt(left[0], left[1], 0)[0]) left = corner;
+        }
+        g.setFont(Theme.font(Font.PLAIN, 11f));
+        for (int layer = 0; layer < lv.h; layer++) {
+            double z = layerBase(layer);
+            g.setStroke(new BasicStroke(.8f));
+            g.setColor(alpha(Theme.GRID, layer == currentLayer ? .27f : .13f));
+            if (layer > 0) g.draw(poly(pt(0, 0, z), pt(lv.w, 0, z), pt(lv.w, lv.d, z), pt(0, lv.d, z)));
+            double[] mark = pt(left[0], left[1], z);
+            line(g, new double[]{mark[0] - 5, mark[1]}, mark);
+            g.setColor(alpha(Theme.TEXT_DIM, layer == currentLayer ? .95f : .65f));
+            Gfx.right(g, (layer + 1) + "층", (int) mark[0] - 9, (int) mark[1] + 4);
+        }
     }
 
     private void shadow(Graphics2D g, double x, double y, double size) {
@@ -305,6 +365,7 @@ final class IsoRenderer {
 
     /** 셀 면(법선 n)의 네 꼭짓점의 화면 좌표. */
     private double[][] faceCorners(double x, double y, double z, int[] n) {
+        z = layerBase(z);
         double fx = n[0] > 0 ? x + 1 : x, fy = n[1] > 0 ? y + 1 : y, fz = n[2] > 0 ? z + 1 : z;
         if (n[0] != 0) {
             return new double[][]{pt(fx, y, z), pt(fx, y + 1, z), pt(fx, y + 1, z + 1), pt(fx, y, z + 1)};
@@ -319,7 +380,7 @@ final class IsoRenderer {
      * 카메라를 향한 면만 평면 음영으로 칠한다.
      */
     private void tetra(Graphics2D g, double x, double y, double z) {
-        double cx = x + 0.5, cy = y + 0.5, cz = z + 0.5;
+        double cx = x + 0.5, cy = y + 0.5, cz = layerBase(z) + 0.5;
         double edge = 0.9, base = edge / Math.sqrt(3), hgt = edge * Math.sqrt(2.0 / 3.0), rot = Math.toRadians(20);
         double[][] v = new double[4][];
         v[0] = new double[]{0, 0, 0.75 * hgt};

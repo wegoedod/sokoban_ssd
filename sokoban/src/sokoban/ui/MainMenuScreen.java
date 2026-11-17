@@ -29,7 +29,7 @@ final class MainMenuScreen implements Screen {
         menu.paint(g, w / 2, (int) (h * 0.46), 280, 54, 14);
         g.setColor(Theme.TEXT_DIM);
         g.setFont(Theme.font(Font.PLAIN, 14f));
-        Gfx.centered(g, "게임 중: W A S D 이동 · ↑↓ 위·아래 · ←→ 시점 회전", w / 2, h - 46);
+        Gfx.centered(g, "게임 중: 인접 칸 클릭 · W A S D 이동 · ↑↓ 위·아래 · ←→ 시점 회전", w / 2, h - 46);
         Gfx.centered(g, "↑↓ 선택   Enter 확인", w / 2, h - 24);
     }
 

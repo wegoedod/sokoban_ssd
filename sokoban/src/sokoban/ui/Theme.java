@@ -32,6 +32,8 @@ final class Theme {
     static final Color PORTAL_A = new Color(0x8f6bff);
     static final Color PORTAL_B = new Color(0xff5fa8);
     static final Color PLAYER = new Color(0x52e0ff);
+    static final Color PREVIEW_PLANAR = new Color(0x52e0ff);
+    static final Color PREVIEW_VERTICAL = new Color(0xc4a4ff);
 
     private static final String FAMILY = pickFamily();
 

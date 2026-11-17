@@ -93,6 +93,10 @@ public final class AllTests {
         test("한글 입력기: 자모 키를 영문 단축키로 보정", sokoban.ui.CameraTest::koreanImeKeysMapToPhysicalKeys);
         test("출고 레벨: 1~3단계는 2D, 4단계부터 3D", AllTests::shippedLevelStructure);
         test("출고 레벨: 모두 검증 완료·풀이 재생·곡선", AllTests::shippedLevels);
+        test("탑뷰 인접 칸 클릭과 무시할 영역", sokoban.ui.MouseMovesTest::flatNeighbourClicksAndIgnoredCells);
+        test("8개 시점의 상하 포함 6방향 클릭", sokoban.ui.MouseMovesTest::allSixCellsAtEveryCameraAngle);
+        test("막힌 칸과 상하 밀기 프리뷰", sokoban.ui.MouseMovesTest::blockedClicksAndVerticalPushes);
+        test("창 크기·회전·초기화 후 클릭 영역", sokoban.ui.MouseMovesTest::resizeAnimationAndClearedTargets);
         finish();
     }
 

@@ -26,6 +26,8 @@ final class PlayScreen implements Screen {
     private final Session session;
     private final IsoRenderer renderer = new IsoRenderer();
     private final Camera cam = new Camera();
+    private final MouseMoves mouseMoves = new MouseMoves();
+    private int mouseX = -1, mouseY = -1;
     /** 한 층짜리 레벨(1~3단계): 2D 탑뷰로 고정하고 시점 회전·z축 이동을 막는다. */
     private final boolean flat;
     private boolean layerFocus;
@@ -201,14 +203,36 @@ final class PlayScreen implements Screen {
 
     @Override
     public void mouseMoved(int x, int y) {
+        mouseX = x;
+        mouseY = y;
         if (mode == Mode.PAUSED) pauseMenu.hover(x, y);
         else if (mode == Mode.CLEARED) clearMenu.hover(x, y);
+    }
+
+    @Override
+    public void mouseExited() {
+        mouseX = mouseY = -1;
     }
 
     @Override
     public void mouseClicked(int x, int y) {
         if (mode == Mode.PAUSED) pauseAction(pauseMenu.click(x, y));
         else if (mode == Mode.CLEARED) clearAction(clearMenu.click(x, y));
+        else if (canClickMove()) {
+            // Rebuild at event time: resizing, undo and keyboard moves must not leave stale hit boxes.
+            var size = app.canvasSize();
+            mouseMoves.layout(level, session.state(), renderer, cam, boardArea(size.width, size.height));
+            MouseMoves.Target target = mouseMoves.pick(x, y);
+            if (target != null && target.available()) move(target.direction());
+        }
+    }
+
+    private boolean canClickMove() {
+        return mode == Mode.PLAYING && animStep == null && !cam.isAnimating();
+    }
+
+    private static Rectangle boardArea(int w, int h) {
+        return new Rectangle(20, 112, Math.max(1, w - 40), Math.max(1, h - 178));
     }
 
     private void pauseAction(int i) {
@@ -241,10 +265,18 @@ final class PlayScreen implements Screen {
 
     @Override
     public void paint(Graphics2D g, int w, int h) {
-        Rectangle area = new Rectangle(20, 84, w - 40, h - 150);
+        Rectangle area = boardArea(w, h);
         IsoRenderer.Anim anim = animStep == null ? null
                 : new IsoRenderer.Anim(animStep, Math.min(1.0, (double) animElapsed / ANIM_MS));
         renderer.render(g, level, session.state(), anim, area, cam, layerFocus);
+        if (canClickMove()) {
+            mouseMoves.layout(level, session.state(), renderer, cam, area);
+            MouseMoves.Target hover = mouseMoves.pick(mouseX, mouseY);
+            mouseMoves.paint(g, renderer, level, hover);
+            helpLine(g, w, mouseMoves.description(hover, level), 94);
+        } else {
+            mouseMoves.clear();
+        }
         hud(g, w, h);
         if (mode == Mode.PAUSED) pauseOverlay(g, w, h);
         if (mode == Mode.CLEARED) clearOverlay(g, w, h);
@@ -276,11 +308,11 @@ final class PlayScreen implements Screen {
         g.setFont(Theme.font(Font.PLAIN, 14f));
         g.setColor(Theme.TEXT_DIM);
         if (flat) {
-            helpLine(g, w, "W A S D 이동 (2D 탑뷰 고정)", h - 38);
+            helpLine(g, w, "인접 칸 클릭 / W A S D 이동 (2D 탑뷰 고정)", h - 38);
             helpLine(g, w, "Z 되돌리기   Y 다시 하기   R 리셋   Esc 일시정지", h - 16);
             return;
         }
-        helpLine(g, w, "W A S D 평면 이동   ↑ ↓ 위·아래   ← → 시점 회전(45°)", h - 38);
+        helpLine(g, w, "인접 칸 클릭: 6방향 이동   W A S D 평면 이동   ↑ ↓ 위·아래   ← → 시점 회전(45°)", h - 38);
         helpLine(g, w, "Z 되돌리기   Y 다시 하기   R 리셋   Esc 일시정지   V 시점 초기화   Tab 층 강조"
                 + (layerFocus ? "(켜짐)" : ""), h - 16);
     }
