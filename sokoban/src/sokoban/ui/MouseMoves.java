@@ -67,23 +67,20 @@ final class MouseMoves {
     }
 
     void paint(Graphics2D original, IsoRenderer renderer, Level level, Target hover) {
+        if (hover == null) return;
         Graphics2D g = (Graphics2D) original.create();
         g.clip(viewport);
-        for (Target target : targets) {
-            boolean selected = target == hover;
-            if (!target.available() && !selected) continue;
-            Color color = color(target);
-            g.setColor(alpha(color, selected ? 54 : 13));
-            g.fill(target.projection().shape());
-            g.setStroke(new BasicStroke(selected ? 2.3f : 1.3f));
-            g.setColor(alpha(color, selected ? 255 : 145));
-            g.draw(target.projection().edges());
-            if (target.available() && target.direction().dz == 0) {
-                Point2D p = target.projection().center();
-                g.fillOval((int) p.getX() - 3, (int) p.getY() - 3, 6, 6);
-            }
+        Color color = color(hover);
+        g.setColor(alpha(color, 54));
+        g.fill(hover.projection().shape());
+        g.setStroke(new BasicStroke(2.3f));
+        g.setColor(color);
+        g.draw(hover.projection().edges());
+        if (hover.available() && hover.direction().dz == 0) {
+            Point2D p = hover.projection().center();
+            g.fillOval((int) p.getX() - 3, (int) p.getY() - 3, 6, 6);
         }
-        if (hover != null && hover.available() && hover.preview().pushed()) {
+        if (hover.available() && hover.preview().pushed()) {
             int boxTo = hover.preview().blockTo();
             var arrival = renderer.projectCell(level.x(boxTo), level.y(boxTo), level.z(boxTo), level.h == 1);
             g.setColor(color(hover));
@@ -95,7 +92,7 @@ final class MouseMoves {
     }
 
     String description(Target target, Level level) {
-        if (target == null) return "색칠된 인접 칸 클릭: 한 칸 이동 / 상자 밀기" + (level.h > 1 ? " · 위·아래층도 직접 클릭" : "");
+        if (target == null) return "인접 칸에 커서를 올려 미리보기 · 클릭으로 이동/밀기";
         if (!target.available()) return "막힌 칸 · 이동할 수 없습니다";
         if (target.preview().blockVanished()) return "클릭: 상자로 구멍 메우기 · 상자는 소멸합니다";
         if (target.preview().pushed()) return "클릭: 상자 밀기 · 점선은 상자 도착 칸 (" + (level.z(target.preview().blockTo()) + 1) + "층)";
