@@ -134,6 +134,14 @@ final class IsoRenderer {
     }
 
     void render(Graphics2D g, Level lv, GameState st, Anim anim, Rectangle area, Camera cam, boolean layerFocus) {
+        renderScene(g, lv, st, anim, area, cam, layerFocus, -1);
+    }
+
+    void renderEditor(Graphics2D g, Level lv, Rectangle area, Camera cam, int activeLayer) {
+        renderScene(g, lv, lv.initial, null, area, cam, true, activeLayer);
+    }
+
+    private void renderScene(Graphics2D g, Level lv, GameState st, Anim anim, Rectangle area, Camera cam, boolean layerFocus, int editorLayer) {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         configure(lv, area, cam);
 
@@ -147,7 +155,8 @@ final class IsoRenderer {
             vanish = anim.step().blockVanished();
             t = anim.t();
         }
-        double px = lv.x(st.player), py = lv.y(st.player), pz = lv.z(st.player);
+        boolean hasPlayer = st.player >= 0;
+        double px = hasPlayer ? lv.x(st.player) : 0, py = hasPlayer ? lv.y(st.player) : 0, pz = hasPlayer ? lv.z(st.player) : 0;
         if (anim != null) {
             px = lerp(lv.x(anim.step().playerFrom()), lv.x(anim.step().playerTo()), anim.t());
             py = lerp(lv.y(anim.step().playerFrom()), lv.y(anim.step().playerTo()), anim.t());
@@ -159,13 +168,14 @@ final class IsoRenderer {
             by = lerp(lv.y(pushedFrom), lv.y(pushedTo), t);
             bz = lerp(lv.z(pushedFrom), lv.z(pushedTo), t);
         }
-        layerZ = layerFocus ? lv.z(st.player) + 0.5 : Double.MAX_VALUE;
+        int activeLayer = editorLayer >= 0 ? editorLayer : hasPlayer ? lv.z(st.player) : 0;
+        layerZ = layerFocus ? activeLayer + 0.5 : Double.MAX_VALUE;
 
         // 1) 바닥 격자와 뒤쪽 틀
         floorGrid(g, lv);
         backFrame(g, lv);
-        layerGuides(g, lv, lv.z(st.player));
-        layerPlane(g, lv, pz);
+        layerGuides(g, lv, activeLayer);
+        layerPlane(g, lv, editorLayer >= 0 ? editorLayer : pz);
 
         // 2) 바닥 그림자 / 목표 표시 (높이 단서)
         g.setStroke(new BasicStroke(1.4f));
@@ -179,7 +189,7 @@ final class IsoRenderer {
             shadow(g, lv.x(b), lv.y(b), 0.7);
         }
         if (pushedTo >= 0) shadow(g, bx, by, 0.7);
-        shadow(g, px, py, 0.45);
+        if (hasPlayer) shadow(g, px, py, 0.45);
 
         // 3) 입체물 (깊이 정렬)
         List<Item> items = new ArrayList<>();
@@ -224,7 +234,7 @@ final class IsoRenderer {
                     fin ? Theme.BLOCK_ON_GOAL : Theme.BLOCK, a)));
         }
         final double fpx = px, fpy = py, fpz = pz;
-        items.add(new Item(depth(fpx + 0.5, fpy + 0.5, layerBase(fpz) + 0.5) + 1e-3, 2, () -> tetra(g, fpx, fpy, fpz)));
+        if (hasPlayer) items.add(new Item(depth(fpx + 0.5, fpy + 0.5, layerBase(fpz) + 0.5) + 1e-3, 2, () -> tetra(g, fpx, fpy, fpz)));
         items.sort(Comparator.<Item>comparingDouble(Item::key).thenComparingInt(Item::order));
         for (Item it : items) it.draw().run();
 
@@ -237,9 +247,19 @@ final class IsoRenderer {
             cubeEdges(g, lv.x(gi), lv.y(gi), lv.z(gi));
         }
         g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.35f));
-        tetra(g, fpx, fpy, fpz);
+        if (hasPlayer) tetra(g, fpx, fpy, fpz);
         g.setComposite(AlphaComposite.SrcOver);
 
+    }
+
+    void objectIcon(Graphics2D g, Level sample, Rectangle area, Color color, float opacity, boolean player, boolean outline) {
+        configure(sample, area, new Camera());
+        layerZ = Double.MAX_VALUE;
+        if (player) tetra(g, 0, 0, 0);
+        else {
+            cube(g, 0, 0, 0, color, opacity);
+            if (outline) { g.setColor(color); g.setStroke(new BasicStroke(1.5f)); cubeEdges(g, 0, 0, 0); }
+        }
     }
 
     /** 어떤 시점에서도 같은 배율이 되도록, 여러 yaw에서의 화면 범위 중 최대치로 맞춘다. */

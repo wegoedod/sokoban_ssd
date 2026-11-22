@@ -6,7 +6,7 @@ import java.awt.event.KeyEvent;
 
 final class MainMenuScreen implements Screen {
     private final App app;
-    private final MenuList menu = new MenuList("시작", "종료");
+    private final MenuList menu = new MenuList("시작", "레벨 디자이너", "종료");
 
     MainMenuScreen(App app) {
         this.app = app;
@@ -56,6 +56,8 @@ final class MainMenuScreen implements Screen {
                 app.showLevelSelect(app.firstOpenLevel());
             }
         } else if (i == 1) {
+            app.showLevelDesigner();
+        } else if (i == 2) {
             System.exit(0);
         }
     }
