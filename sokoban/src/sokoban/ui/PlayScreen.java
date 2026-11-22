@@ -37,17 +37,29 @@ final class PlayScreen implements Screen {
     private long animElapsed;
     private Direction pending;
 
-    private final MenuList pauseMenu = new MenuList("계속", "다시 시작", "레벨 선택", "메인 메뉴");
+    private final MenuList pauseMenu;
     private MenuList clearMenu;
     private boolean hasNext;
     // 결과
     private int resScore, resStars;
     private boolean newRecord;
+    private final Runnable editorReturn;
 
     PlayScreen(App app, int levelIndex) {
+        this(app, levelIndex, app.repo.levels.get(levelIndex), null);
+    }
+
+    PlayScreen(App app, Level level, Runnable editorReturn) {
+        this(app, -1, level, editorReturn);
+    }
+
+    private PlayScreen(App app, int levelIndex, Level level, Runnable editorReturn) {
         this.app = app;
         this.levelIndex = levelIndex;
-        this.level = app.repo.levels.get(levelIndex);
+        this.level = level;
+        this.editorReturn = editorReturn;
+        pauseMenu = editorReturn != null ? new MenuList("계속", "다시 시작", "편집으로 돌아가기")
+                : new MenuList("계속", "다시 시작", "레벨 선택", "메인 메뉴");
         this.session = new Session(level, app.config);
         this.flat = level.h == 1;
         // 첫 3D 레벨(앞 레벨이 모두 한 층)이면 탑뷰에서 시작해 3D 시점으로 확장하는 연출을 건다.
@@ -107,6 +119,10 @@ final class PlayScreen implements Screen {
 
     private void onCleared() {
         mode = Mode.CLEARED;
+        if (editorReturn != null) {
+            clearMenu = new MenuList("다시 도전", "편집으로 돌아가기");
+            return;
+        }
         resScore = session.score();
         resStars = session.stars();
         newRecord = app.save.update(level.id, resScore, resStars, session.moves());
@@ -137,7 +153,9 @@ final class PlayScreen implements Screen {
                 }
             }
             case CLEARED -> {
-                if (e.getKeyCode() == KeyEvent.VK_ESCAPE) app.showLevelSelect(levelIndex);
+                if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    if (editorReturn != null) editorReturn.run(); else app.showLevelSelect(levelIndex);
+                }
                 else clearAction(clearMenu.key(e));
             }
         }
@@ -242,7 +260,7 @@ final class PlayScreen implements Screen {
                 mode = Mode.PLAYING;
                 reset();
             }
-            case 2 -> app.showLevelSelect(levelIndex);
+            case 2 -> { if (editorReturn != null) editorReturn.run(); else app.showLevelSelect(levelIndex); }
             case 3 -> app.showMainMenu();
             default -> {
             }
@@ -251,6 +269,11 @@ final class PlayScreen implements Screen {
 
     private void clearAction(int i) {
         if (i < 0) return;
+        if (editorReturn != null) {
+            if (i == 0) { session.reset(); mode = Mode.PLAYING; animStep = null; pending = null; }
+            else editorReturn.run();
+            return;
+        }
         int idx = hasNext ? i : i + 1; // 마지막 레벨에는 "다음 레벨"이 없다
         switch (idx) {
             case 0 -> app.startLevel(levelIndex + 1);
@@ -286,18 +309,19 @@ final class PlayScreen implements Screen {
         int idx = levelIndex + 1;
         g.setColor(Theme.TEXT);
         g.setFont(Theme.font(Font.BOLD, 24f));
-        g.drawString(idx + ". " + level.name, 24, 40);
+        g.drawString((editorReturn != null ? "테스트 · " : idx + ". ") + level.name, 24, 40);
 
         double r3 = level.star3Ratio != null ? level.star3Ratio : app.config.star3Ratio;
         double r2 = level.star2Ratio != null ? level.star2Ratio : app.config.star2Ratio;
         g.setFont(Theme.font(Font.PLAIN, 14f));
         g.setColor(Theme.TEXT_DIM);
-        g.drawString("★★★ " + Scoring.limit(level.optimalMoves, r3) + "수 이하   ★★ "
+        g.drawString(editorReturn != null ? "편집 맵 테스트 · Esc 메뉴에서 편집으로 복귀 · 기록 저장 없음"
+                : "★★★ " + Scoring.limit(level.optimalMoves, r3) + "수 이하   ★★ "
                 + Scoring.limit(level.optimalMoves, r2) + "수 이하", 24, 64);
 
         g.setFont(Theme.font(Font.BOLD, 20f));
         g.setColor(Theme.TEXT);
-        Gfx.right(g, "이동 " + session.moves() + " / 최적 " + level.optimalMoves, w - 24, 40);
+        Gfx.right(g, "이동 " + session.moves() + (editorReturn != null ? "" : " / 최적 " + level.optimalMoves), w - 24, 40);
         g.setFont(Theme.font(Font.PLAIN, 15f));
         g.setColor(Theme.TEXT_DIM);
         Gfx.right(g, flat
@@ -354,15 +378,16 @@ final class PlayScreen implements Screen {
         g.setColor(Theme.TEXT);
         g.setFont(Theme.font(Font.BOLD, 34f));
         Gfx.centered(g, "클리어!", w / 2, py + 52);
-        Gfx.stars(g, w / 2.0, py + 96, 20, resStars);
+        if (editorReturn == null) Gfx.stars(g, w / 2.0, py + 96, 20, resStars);
+        else { g.setFont(Theme.font(Font.PLAIN, 16f)); Gfx.centered(g, "테스트 성공 · 편집 중인 맵은 그대로 보존됩니다", w / 2, py + 96); }
 
         g.setFont(Theme.font(Font.PLAIN, 18f));
         int y = py + 150;
         String[][] rows = {
                 {"이동 횟수", String.valueOf(session.moves())},
-                {"최적 횟수", String.valueOf(level.optimalMoves)},
+                {"최적 횟수", editorReturn != null ? "미검증" : String.valueOf(level.optimalMoves)},
                 {"되돌리기", session.undoCount() + "회"},
-                {"점수", String.valueOf(resScore)},
+                {"점수", editorReturn != null ? "기록하지 않음" : String.valueOf(resScore)},
         };
         for (String[] row : rows) {
             g.setColor(Theme.TEXT_DIM);
@@ -376,7 +401,7 @@ final class PlayScreen implements Screen {
             g.setFont(Theme.font(Font.BOLD, 18f));
             Gfx.centered(g, "신기록!", w / 2, y + 6);
         }
-        if (!hasNext) {
+        if (!hasNext && editorReturn == null) {
             g.setColor(Theme.ACCENT);
             g.setFont(Theme.font(Font.BOLD, 16f));
             Gfx.centered(g, "모든 레벨을 완주했습니다. 축하합니다!", w / 2, y + 30);

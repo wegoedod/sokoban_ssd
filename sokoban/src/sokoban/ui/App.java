@@ -23,6 +23,7 @@ import java.nio.file.Path;
 
 /** 애플리케이션 루트: 창, 화면 전환, 공용 데이터(설정·레벨·기록). 모든 UI 갱신은 EDT에서 한다 (NFR-5). */
 public final class App {
+    private final Path home;
     public final GameConfig config;
     public final LevelRepository repo;
     public final SaveStore save;
@@ -33,6 +34,7 @@ public final class App {
     private long noticeUntil;
 
     public App(Path home) {
+        this.home = home;
         // UC-01: 설정 → 레벨 목록 → 기록 순으로 읽는다.
         this.config = GameConfig.load(home.resolve("config").resolve("game.properties"));
         this.repo = LevelRepository.load(home.resolve("levels"), config);
@@ -69,6 +71,7 @@ public final class App {
                 canvas.repaint();
             }
         }).start();
+        if (Boolean.getBoolean("sokoban.editor")) showLevelDesigner();
     }
 
     // ---------- 화면 전환 ----------
@@ -89,6 +92,30 @@ public final class App {
 
     void showMainMenu() {
         setScreen(new MainMenuScreen(this));
+    }
+
+    void showLevelDesigner() {
+        try {
+            var editor = new sokoban.editor.LevelDesigner(home.resolve("config/editor-blocks.properties"));
+            editor.setPlaytest(this::testEditorLevel);
+            editor.openIn(frame, () -> { showMainMenu(); focusCanvas(); });
+        } catch (Exception e) {
+            notify("레벨 디자이너를 열 수 없습니다: " + e.getMessage());
+        }
+    }
+
+    private void testEditorLevel(sokoban.core.Level level) {
+        var editorContent = frame.getContentPane();
+        String editorTitle = frame.getTitle();
+        frame.setContentPane(canvas);
+        frame.setTitle("레벨 테스트 — " + level.name);
+        setScreen(new PlayScreen(this, level, () -> {
+            showMainMenu();
+            frame.setContentPane(editorContent);
+            frame.setTitle(editorTitle);
+            frame.revalidate(); frame.repaint();
+        }));
+        frame.revalidate(); frame.repaint(); focusCanvas();
     }
 
     void showLevelSelect(int focus) {
