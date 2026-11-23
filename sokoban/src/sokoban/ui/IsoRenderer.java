@@ -48,6 +48,8 @@ final class IsoRenderer {
     private double scale, ox, oy;
     private double layerPitch = 1;
     private double layerZ = Double.MAX_VALUE; // 이 높이보다 위층은 흐리게 (MAX = 끔)
+    private double layerBelow = -Double.MAX_VALUE; // 이 높이보다 아래층은 살짝 흐리게 (-MAX = 끔)
+    private static final float ABOVE_ALPHA = 0.22f, BELOW_ALPHA = 0.7f;
 
     // 막힌 입력에서 막은 칸 강조(번쩍임). 격자 밖 칸일 수도 있다. alpha 0이면 그리지 않는다.
     private int flashX, flashY, flashZ;
@@ -186,6 +188,8 @@ final class IsoRenderer {
         }
         int activeLayer = editorLayer >= 0 ? editorLayer : hasPlayer ? lv.z(st.player) : 0;
         layerZ = layerFocus ? activeLayer + 0.5 : Double.MAX_VALUE;
+        // 층 강조: 현재 층만 선명하게, 위층은 많이, 아래층은 조금 흐리게. 맨 위층에 서 있어도 아래층이 흐려져 달라진다.
+        layerBelow = layerFocus ? activeLayer : -Double.MAX_VALUE;
 
         // 1) 바닥 격자와 뒤쪽 틀
         floorGrid(g, lv);
@@ -282,6 +286,7 @@ final class IsoRenderer {
     void objectIcon(Graphics2D g, Level sample, Rectangle area, Color color, float opacity, boolean player, boolean outline) {
         configure(sample, area, new Camera());
         layerZ = Double.MAX_VALUE;
+        layerBelow = -Double.MAX_VALUE;
         if (player) tetra(g, 0, 0, 0);
         else {
             cube(g, 0, 0, 0, color, opacity);
@@ -389,9 +394,16 @@ final class IsoRenderer {
 
     private static final int[][] FACE_N = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
+    /** 층 강조 상태에서 z층 물체에 곱할 불투명도. 강조를 꺼 두면 항상 1. */
+    private float layerAlpha(double z) {
+        if (z + 0.5 > layerZ) return ABOVE_ALPHA;
+        if (z + 0.5 < layerBelow) return BELOW_ALPHA;
+        return 1f;
+    }
+
     /** 셀 (x,y,z)를 채우는 단위 정육면체. alpha < 1이면 반투명(뒤가 비친다). 카메라를 향한 면만 그린다. */
     private void cube(Graphics2D g, double x, double y, double z, Color base, float alpha) {
-        if (z + 0.5 > layerZ) alpha *= 0.22f; // 층 강조: 위층은 흐리게
+        alpha *= layerAlpha(z); // 층 강조: 위층은 많이, 아래층은 조금 흐리게
         for (int[] n : FACE_N) {
             if (!facing(n[0], n[1], n[2])) continue;
             Path2D face = poly(faceCorners(x, y, z, n));

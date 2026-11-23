@@ -94,6 +94,17 @@ public final class AllTests {
         test("카메라: 시점 초기화가 기울기까지 되돌림", sokoban.ui.CameraTest::resetViewRestoresDefaultTilt);
         test("한글 입력기: 자모 키를 영문 단축키로 보정", sokoban.ui.CameraTest::koreanImeKeysMapToPhysicalKeys);
         test("출고 레벨: 1~3단계는 2D, 4단계부터 3D", AllTests::shippedLevelStructure);
+        test("렌더: 맨 위층에서도 층 강조가 화면을 바꿈", sokoban.ui.RenderTest::layerFocusChangesEvenOnTopLayer);
+        test("렌더: 층 강조는 위층을 흐리게 하고 끄면 복원", sokoban.ui.RenderTest::layerFocusDimsUpperLayersAndRestores);
+        test("렌더: 2D 레벨은 층 강조 영향 없음", sokoban.ui.RenderTest::layerFocusDoesNothingOnFlatLevel);
+        test("우주 지도: 행성이 위·아래 지그재그, 간격 일정", sokoban.ui.SpaceMapTest::zigzagLayout);
+        test("우주 지도: 로켓은 목표까지 한 행성씩만 이동", sokoban.ui.SpaceMapTest::rocketMovesOneNodeAtATime);
+        test("우주 지도: 이동 중 목표가 바뀌면 되돌아 뜀", sokoban.ui.SpaceMapTest::rocketReversesMidHop);
+        test("우주 지도: 먼 이동은 빠르게", sokoban.ui.SpaceMapTest::farTravelIsFaster);
+        test("우주 지도: 클릭 판정", sokoban.ui.SpaceMapTest::hitTest);
+        test("우주 지도: 카메라 수렴(프레임 속도 무관)", sokoban.ui.SpaceMapTest::cameraConverges);
+        test("우주 지도: 행성 이름(지구 시작, 모자라면 자동)", sokoban.ui.SpaceMapTest::planetNames);
+        test("우주 지도: 그린 뒤 변환·클립 보존(회귀)", sokoban.ui.SpaceMapTest::drawingKeepsGraphicsState);
         test("막힘 사유: 사유별 종류와 막은 칸 좌표", AllTests::blockReasonKinds);
         test("막힘 사유: step()이 null일 때만 사유가 있다(출고 레벨 랜덤 이동)", AllTests::blockReasonMatchesStep);
         test("출고 레벨: 모두 검증 완료·풀이 재생·곡선", AllTests::shippedLevels);

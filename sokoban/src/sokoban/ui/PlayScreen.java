@@ -9,9 +9,7 @@ import sokoban.core.Session;
 import sokoban.core.StepResult;
 
 import javax.swing.JOptionPane;
-import java.awt.AlphaComposite;
 import java.awt.Color;
-import java.awt.Composite;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
@@ -21,8 +19,8 @@ import java.io.IOException;
 /** 게임 플레이 화면: 격자 렌더링, HUD, 일시정지, 클리어 결과. */
 final class PlayScreen implements Screen {
     private static final long ANIM_MS = 110;
-    /** 막히면 막은 칸이 번쩍이는 시간, 그리고 안내 문구를 띄우는 시간(ms). */
-    private static final long FLASH_MS = 520, TOAST_MS = 1500, TOAST_FADE_MS = 300;
+    /** 막히면 막은 칸이 번쩍이는 시간(ms). */
+    private static final long FLASH_MS = 520;
 
     private enum Mode { PLAYING, PAUSED, CLEARED }
 
@@ -96,7 +94,7 @@ final class PlayScreen implements Screen {
         cam.update(dt);
         if (blocked != null) {
             blockedElapsed += dt;
-            if (blockedElapsed >= TOAST_MS) blocked = null;
+            if (blockedElapsed >= FLASH_MS) blocked = null;
         }
         if (animStep == null) return;
         animElapsed += dt;
@@ -257,7 +255,7 @@ final class PlayScreen implements Screen {
     public void mouseClicked(int x, int y) {
         if (mode == Mode.PAUSED) pauseAction(pauseMenu.click(x, y));
         else if (mode == Mode.CLEARED) clearAction(clearMenu.click(x, y));
-        else if (canClickMove()) {
+        else if (canAcceptClick()) {
             // Rebuild at event time: resizing, undo and keyboard moves must not leave stale hit boxes.
             var size = app.canvasSize();
             mouseMoves.layout(level, session.state(), renderer, cam, boardArea(size.width, size.height));
@@ -266,8 +264,18 @@ final class PlayScreen implements Screen {
         }
     }
 
+    /** 호버 미리보기를 그릴 수 있는가. 이동 애니메이션 중에는 플레이어가 움직이는 중이라 그리지 않는다. */
     private boolean canClickMove() {
         return mode == Mode.PLAYING && animStep == null && !cam.isAnimating();
+    }
+
+    /**
+     * 클릭 입력을 받을 수 있는가. 이동 애니메이션(110ms) 중에도 받는다: 키보드와 똑같이 move()가
+     * 마지막 입력 하나를 대기열에 넣었다가 애니메이션이 끝나면 실행하므로, 빠르게 클릭해도 입력이 씹히지 않는다.
+     * 시점이 회전하는 중에는 화면 좌표와 칸의 대응이 계속 바뀌므로 받지 않는다.
+     */
+    private boolean canAcceptClick() {
+        return mode == Mode.PLAYING && !cam.isAnimating();
     }
 
     private static Rectangle boardArea(int w, int h) {
@@ -312,7 +320,7 @@ final class PlayScreen implements Screen {
         Rectangle area = boardArea(w, h);
         IsoRenderer.Anim anim = animStep == null ? null
                 : new IsoRenderer.Anim(animStep, Math.min(1.0, (double) animElapsed / ANIM_MS));
-        if (blocked != null && blockedElapsed < FLASH_MS && mode == Mode.PLAYING) {
+        if (blocked != null && mode == Mode.PLAYING) {
             renderer.setFlash(blocked.x(), blocked.y(), blocked.z(), flashAlpha());
         } else {
             renderer.clearFlash();
@@ -327,7 +335,6 @@ final class PlayScreen implements Screen {
             mouseMoves.clear();
         }
         hud(g, w, h);
-        if (blocked != null && mode == Mode.PLAYING) blockedToast(g, w);
         if (mode == Mode.PAUSED) pauseOverlay(g, w, h);
         if (mode == Mode.CLEARED) clearOverlay(g, w, h);
     }
@@ -336,34 +343,6 @@ final class PlayScreen implements Screen {
     private float flashAlpha() {
         float e = Math.min(1f, blockedElapsed / (float) FLASH_MS);
         return 0.8f * (1f - e) * (0.5f + 0.5f * (float) Math.cos(4 * Math.PI * e));
-    }
-
-    private static String blockedMessage(BlockReason.Kind kind) {
-        return switch (kind) {
-            case WALL, EDGE -> "벽이 막혀있어!";
-            case HOLE -> "구멍에는 들어갈 수 없어!";
-            case PUSH_WALL, PUSH_EDGE -> "상자 뒤가 막혀있어!";
-            case PUSH_BOX -> "상자 뒤에 상자가 있어!";
-        };
-    }
-
-    /** 화면 위쪽에 잠깐 뜨는 안내 문구. 끝에 서서히 사라진다. */
-    private void blockedToast(Graphics2D g, int w) {
-        String text = blockedMessage(blocked.kind());
-        float a = blockedElapsed > TOAST_MS - TOAST_FADE_MS
-                ? Math.max(0f, (TOAST_MS - blockedElapsed) / (float) TOAST_FADE_MS) : 1f;
-        Composite saved = g.getComposite();
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
-        g.setFont(Theme.font(Font.BOLD, 22f));
-        int tw = g.getFontMetrics().stringWidth(text);
-        int bw = tw + 48, bh = 44, bx = (w - bw) / 2, by = 122;
-        g.setColor(new Color(0x2a1216));
-        g.fillRoundRect(bx, by, bw, bh, 22, 22);
-        g.setColor(Theme.BLOCKED);
-        g.drawRoundRect(bx, by, bw, bh, 22, 22);
-        g.setColor(Theme.TEXT);
-        Gfx.centered(g, text, w / 2, by + 30);
-        g.setComposite(saved);
     }
 
     private void hud(Graphics2D g, int w, int h) {
@@ -389,6 +368,12 @@ final class PlayScreen implements Screen {
                 ? "2D 탑뷰   되돌리기 " + session.undoCount() + "회"
                 : "층 " + (level.z(session.state().player) + 1) + " / " + level.h
                         + "   되돌리기 " + session.undoCount() + "회", w - 24, 64);
+
+        if (layerFocus && !flat) {
+            g.setFont(Theme.font(Font.BOLD, 15f));
+            g.setColor(Theme.ACCENT);
+            Gfx.right(g, "층 강조 켜짐  (Tab으로 끄기)", w - 24, 90);
+        }
 
         g.setFont(Theme.font(Font.PLAIN, 14f));
         g.setColor(Theme.TEXT_DIM);
