@@ -1,6 +1,7 @@
 package sokoban;
 
 import sokoban.config.GameConfig;
+import sokoban.core.BlockReason;
 import sokoban.core.Direction;
 import sokoban.core.Engine;
 import sokoban.core.GameState;
@@ -22,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 import static sokoban.Check.*;
 
@@ -92,6 +94,8 @@ public final class AllTests {
         test("카메라: 시점 초기화가 기울기까지 되돌림", sokoban.ui.CameraTest::resetViewRestoresDefaultTilt);
         test("한글 입력기: 자모 키를 영문 단축키로 보정", sokoban.ui.CameraTest::koreanImeKeysMapToPhysicalKeys);
         test("출고 레벨: 1~3단계는 2D, 4단계부터 3D", AllTests::shippedLevelStructure);
+        test("막힘 사유: 사유별 종류와 막은 칸 좌표", AllTests::blockReasonKinds);
+        test("막힘 사유: step()이 null일 때만 사유가 있다(출고 레벨 랜덤 이동)", AllTests::blockReasonMatchesStep);
         test("출고 레벨: 모두 검증 완료·풀이 재생·곡선", AllTests::shippedLevels);
         test("탑뷰 인접 칸 클릭과 무시할 영역", sokoban.ui.MouseMovesTest::flatNeighbourClicksAndIgnoredCells);
         test("8개 시점의 상하 포함 6방향 클릭", sokoban.ui.MouseMovesTest::allSixCellsAtEveryCameraAngle);
@@ -749,6 +753,73 @@ public final class AllTests {
             }
         }
         eq(3, first3D, "첫 3D 레벨은 4단계");
+    }
+
+    // ---------- 막힘 사유 (UI가 막은 칸을 강조하는 데 쓴다) ----------
+
+    static void assertReason(Level l, Direction d, BlockReason.Kind kind, int x, int y, int z) {
+        isNull(Engine.step(l, l.initial, d));   // 실제로 막히는 입력에 대해서만 판단한다
+        BlockReason r = Engine.whyBlocked(l, l.initial, d);
+        notNull(r, d + " 사유가 있어야 한다");
+        eq(kind, r.kind());
+        eq(x, r.x(), "x");
+        eq(y, r.y(), "y");
+        eq(z, r.z(), "z");
+    }
+
+    static void blockReasonKinds() {
+        // 벽
+        Level wall = lv("######", "#@#$.#", "######");
+        assertReason(wall, Direction.RIGHT, BlockReason.Kind.WALL, 2, 1, 0);
+        assertReason(wall, Direction.UP, BlockReason.Kind.WALL, 1, 0, 0);
+        // 격자 밖 (좌표는 격자 밖 칸): 한 층짜리에서 z 방향도 격자 밖이다
+        Level edge = lv("@$.");
+        assertReason(edge, Direction.LEFT, BlockReason.Kind.EDGE, -1, 0, 0);
+        assertReason(edge, Direction.UP, BlockReason.Kind.EDGE, 0, -1, 0);
+        assertReason(edge, Direction.ABOVE, BlockReason.Kind.EDGE, 0, 0, 1);
+        assertReason(edge, Direction.BELOW, BlockReason.Kind.EDGE, 0, 0, -1);
+        // 열린 구멍은 플레이어가 들어갈 수 없다
+        Level hole = lv("@O$$.");
+        assertReason(hole, Direction.RIGHT, BlockReason.Kind.HOLE, 1, 0, 0);
+        // 상자 뒤가 벽 / 격자 밖 / 다른 상자
+        assertReason(lv("@$#."), Direction.RIGHT, BlockReason.Kind.PUSH_WALL, 2, 0, 0);
+        assertReason(lv("$@."), Direction.LEFT, BlockReason.Kind.PUSH_EDGE, -1, 0, 0);
+        assertReason(lv("@$$."), Direction.RIGHT, BlockReason.Kind.PUSH_BOX, 2, 0, 0);
+        // 막히지 않는 입력(빈 칸, 밀 수 있는 상자, 닫히지 않은 구멍에 밀기)은 사유가 없다
+        Level free = lv("@$-.");
+        notNull(Engine.step(free, free.initial, Direction.RIGHT));
+        isNull(Engine.whyBlocked(free, free.initial, Direction.RIGHT));
+        Level fill = lv("@$O$.");
+        notNull(Engine.step(fill, fill.initial, Direction.RIGHT));
+        isNull(Engine.whyBlocked(fill, fill.initial, Direction.RIGHT));
+    }
+
+    /**
+     * UI 안내가 엔진 규칙과 어긋나지 않는지: 모든 출고 레벨에서 랜덤하게 움직이며 매 상태의 여섯 방향에 대해
+     * step()이 null ⇔ whyBlocked()가 있음 이어야 한다. 새 기믹이 막힘 조건을 늘리면 여기서 잡힌다.
+     */
+    static void blockReasonMatchesStep() {
+        GameConfig cfg = GameConfig.load(Path.of("config", "game.properties"));
+        LevelRepository repo = LevelRepository.load(Path.of("levels"), cfg);
+        Random rnd = new Random(20261123L);
+        int checks = 0, blockedCount = 0, openCount = 0;
+        for (Level l : repo.levels) {
+            GameState s = l.initial;
+            for (int step = 0; step < 400; step++) {
+                for (Direction d : Direction.values()) {
+                    boolean blocked = Engine.step(l, s, d) == null;
+                    boolean hasReason = Engine.whyBlocked(l, s, d) != null;
+                    eq(blocked, hasReason, l.id + " step=" + step + " " + d + " (state " + s + ")");
+                    checks++;
+                    if (blocked) blockedCount++; else openCount++;
+                }
+                Direction go = Direction.values()[rnd.nextInt(6)];
+                StepResult r = Engine.step(l, s, go);
+                if (r != null) s = r.state();
+            }
+        }
+        check(checks >= 6 * 400 * repo.levels.size(), "검사 횟수 " + checks);
+        check(blockedCount > 0 && openCount > 0, "막힘 " + blockedCount + " / 통과 " + openCount);
     }
 
     static void shippedLevels() {

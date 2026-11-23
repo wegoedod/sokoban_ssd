@@ -49,6 +49,22 @@ final class IsoRenderer {
     private double layerPitch = 1;
     private double layerZ = Double.MAX_VALUE; // 이 높이보다 위층은 흐리게 (MAX = 끔)
 
+    // 막힌 입력에서 막은 칸 강조(번쩍임). 격자 밖 칸일 수도 있다. alpha 0이면 그리지 않는다.
+    private int flashX, flashY, flashZ;
+    private float flashAlpha;
+
+    /** (x, y, z) 칸을 alpha(0~1) 세기로 번쩍이게 한다. 매 프레임 호출하고, 끝내려면 {@link #clearFlash()}. */
+    void setFlash(int x, int y, int z, float alpha) {
+        flashX = x;
+        flashY = y;
+        flashZ = z;
+        flashAlpha = alpha;
+    }
+
+    void clearFlash() {
+        flashAlpha = 0f;
+    }
+
     /** Rendering and mouse picking must use exactly the same projection and viewport. */
     void configure(Level lv, Rectangle area, Camera cam) {
         setCamera(lv, cam.yaw, cam.pitch);
@@ -235,6 +251,17 @@ final class IsoRenderer {
         }
         final double fpx = px, fpy = py, fpz = pz;
         if (hasPlayer) items.add(new Item(depth(fpx + 0.5, fpy + 0.5, layerBase(fpz) + 0.5) + 1e-3, 2, () -> tetra(g, fpx, fpy, fpz)));
+        if (flashAlpha > 0f) {
+            // 막은 칸: 그 칸의 벌마 바로 다음에 그려 벽·상자 위에 붉은 빛이 덮이게 한다
+            final int fxc = flashX, fyc = flashY, fzc = flashZ;
+            final float fa = flashAlpha;
+            items.add(new Item(depth(fxc + 0.5, fyc + 0.5, layerBase(fzc) + 0.5) + 5e-4, 1, () -> {
+                cube(g, fxc, fyc, fzc, Theme.BLOCKED, fa);
+                g.setStroke(new BasicStroke(3f));
+                g.setColor(alpha(Theme.BLOCKED, Math.min(1f, fa + 0.2f)));
+                cubeEdges(g, fxc, fyc, fzc);
+            }));
+        }
         items.sort(Comparator.<Item>comparingDouble(Item::key).thenComparingInt(Item::order));
         for (Item it : items) it.draw().run();
 

@@ -1,13 +1,17 @@
 package sokoban.ui;
 
+import sokoban.core.BlockReason;
 import sokoban.core.Direction;
+import sokoban.core.Engine;
 import sokoban.core.Level;
 import sokoban.core.Scoring;
 import sokoban.core.Session;
 import sokoban.core.StepResult;
 
 import javax.swing.JOptionPane;
+import java.awt.AlphaComposite;
 import java.awt.Color;
+import java.awt.Composite;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
@@ -17,6 +21,8 @@ import java.io.IOException;
 /** 게임 플레이 화면: 격자 렌더링, HUD, 일시정지, 클리어 결과. */
 final class PlayScreen implements Screen {
     private static final long ANIM_MS = 110;
+    /** 막히면 막은 칸이 번쩍이는 시간, 그리고 안내 문구를 띄우는 시간(ms). */
+    private static final long FLASH_MS = 520, TOAST_MS = 1500, TOAST_FADE_MS = 300;
 
     private enum Mode { PLAYING, PAUSED, CLEARED }
 
@@ -36,6 +42,9 @@ final class PlayScreen implements Screen {
     private StepResult animStep;
     private long animElapsed;
     private Direction pending;
+    /** 직전에 막힌 입력의 이유(없으면 null)와 그 뒤 경과 시간. */
+    private BlockReason blocked;
+    private long blockedElapsed;
 
     private final MenuList pauseMenu;
     private MenuList clearMenu;
@@ -85,6 +94,10 @@ final class PlayScreen implements Screen {
     @Override
     public void tick(long dt) {
         cam.update(dt);
+        if (blocked != null) {
+            blockedElapsed += dt;
+            if (blockedElapsed >= TOAST_MS) blocked = null;
+        }
         if (animStep == null) return;
         animElapsed += dt;
         if (animElapsed >= ANIM_MS) {
@@ -106,8 +119,13 @@ final class PlayScreen implements Screen {
         }
         StepResult r = session.move(d);
         if (r != null) {
+            blocked = null;
             animStep = r;
             animElapsed = 0;
+        } else {
+            // 막혔다: 이동 횟수에는 포함되지 않는다. 무엇이 막았는지 찾아 화면에 알린다.
+            blocked = Engine.whyBlocked(level, session.state(), d);
+            blockedElapsed = 0;
         }
     }
 
@@ -185,10 +203,12 @@ final class PlayScreen implements Screen {
             }
             case KeyEvent.VK_Z -> {
                 finishAnim();
+                blocked = null;
                 session.undo();
             }
             case KeyEvent.VK_Y -> {
                 finishAnim();
+                blocked = null;
                 session.redo();
             }
             case KeyEvent.VK_V -> {
@@ -216,6 +236,7 @@ final class PlayScreen implements Screen {
             app.focusCanvas();
             if (r != JOptionPane.OK_OPTION) return;
         }
+        blocked = null;
         session.reset();
     }
 
@@ -291,6 +312,11 @@ final class PlayScreen implements Screen {
         Rectangle area = boardArea(w, h);
         IsoRenderer.Anim anim = animStep == null ? null
                 : new IsoRenderer.Anim(animStep, Math.min(1.0, (double) animElapsed / ANIM_MS));
+        if (blocked != null && blockedElapsed < FLASH_MS && mode == Mode.PLAYING) {
+            renderer.setFlash(blocked.x(), blocked.y(), blocked.z(), flashAlpha());
+        } else {
+            renderer.clearFlash();
+        }
         renderer.render(g, level, session.state(), anim, area, cam, layerFocus);
         if (canClickMove()) {
             mouseMoves.layout(level, session.state(), renderer, cam, area);
@@ -301,8 +327,43 @@ final class PlayScreen implements Screen {
             mouseMoves.clear();
         }
         hud(g, w, h);
+        if (blocked != null && mode == Mode.PLAYING) blockedToast(g, w);
         if (mode == Mode.PAUSED) pauseOverlay(g, w, h);
         if (mode == Mode.CLEARED) clearOverlay(g, w, h);
+    }
+
+    /** 막힌 칸 번쩍임 세기: 처음에 가장 강하고, 두 번 깜빡이며 점점 약해진다. */
+    private float flashAlpha() {
+        float e = Math.min(1f, blockedElapsed / (float) FLASH_MS);
+        return 0.8f * (1f - e) * (0.5f + 0.5f * (float) Math.cos(4 * Math.PI * e));
+    }
+
+    private static String blockedMessage(BlockReason.Kind kind) {
+        return switch (kind) {
+            case WALL, EDGE -> "벽이 막혀있어!";
+            case HOLE -> "구멍에는 들어갈 수 없어!";
+            case PUSH_WALL, PUSH_EDGE -> "상자 뒤가 막혀있어!";
+            case PUSH_BOX -> "상자 뒤에 상자가 있어!";
+        };
+    }
+
+    /** 화면 위쪽에 잠깐 뜨는 안내 문구. 끝에 서서히 사라진다. */
+    private void blockedToast(Graphics2D g, int w) {
+        String text = blockedMessage(blocked.kind());
+        float a = blockedElapsed > TOAST_MS - TOAST_FADE_MS
+                ? Math.max(0f, (TOAST_MS - blockedElapsed) / (float) TOAST_FADE_MS) : 1f;
+        Composite saved = g.getComposite();
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
+        g.setFont(Theme.font(Font.BOLD, 22f));
+        int tw = g.getFontMetrics().stringWidth(text);
+        int bw = tw + 48, bh = 44, bx = (w - bw) / 2, by = 122;
+        g.setColor(new Color(0x2a1216));
+        g.fillRoundRect(bx, by, bw, bh, 22, 22);
+        g.setColor(Theme.BLOCKED);
+        g.drawRoundRect(bx, by, bw, bh, 22, 22);
+        g.setColor(Theme.TEXT);
+        Gfx.centered(g, text, w / 2, by + 30);
+        g.setComposite(saved);
     }
 
     private void hud(Graphics2D g, int w, int h) {
