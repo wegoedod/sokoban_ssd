@@ -1,0 +1,28 @@
+package sokoban.core;
+
+/**
+ * 입력이 막힌 이유. 이동 횟수에 포함되지 않는 입력(FR-1.4)에 대해 UI가 "무엇이 막았는지" 알려 주는 데 쓴다.
+ * 규칙을 바꾸지 않는 읽기 전용 정보다.
+ *
+ * @param kind 막은 이유
+ * @param x    막은 칸의 x (격자 밖일 수 있다)
+ * @param y    막은 칸의 y
+ * @param z    막은 칸의 z
+ */
+public record BlockReason(Kind kind, int x, int y, int z) {
+
+    public enum Kind {
+        /** 이동하려는 칸이 벽이다. */
+        WALL,
+        /** 이동하려는 칸이 격자 밖이다(격자 밖은 고체). */
+        EDGE,
+        /** 이동하려는 칸이 아직 메워지지 않은 구멍이다. 플레이어는 들어갈 수 없다. */
+        HOLE,
+        /** 상자를 밀려는데 상자 뒤가 벽이다. */
+        PUSH_WALL,
+        /** 상자를 밀려는데 상자 뒤가 격자 밖이다. */
+        PUSH_EDGE,
+        /** 상자를 밀려는데 상자 뒤에 다른 상자가 있다(연쇄 밀기 없음). */
+        PUSH_BOX
+    }
+}

@@ -1,6 +1,8 @@
 package sokoban.ui;
 
+import sokoban.core.BlockReason;
 import sokoban.core.Direction;
+import sokoban.core.Engine;
 import sokoban.core.Level;
 import sokoban.core.Scoring;
 import sokoban.core.Session;
@@ -17,6 +19,8 @@ import java.io.IOException;
 /** 게임 플레이 화면: 격자 렌더링, HUD, 일시정지, 클리어 결과. */
 final class PlayScreen implements Screen {
     private static final long ANIM_MS = 110;
+    /** 막히면 막은 칸이 번쩍이는 시간(ms). */
+    private static final long FLASH_MS = 520;
 
     private enum Mode { PLAYING, PAUSED, CLEARED }
 
@@ -36,6 +40,9 @@ final class PlayScreen implements Screen {
     private StepResult animStep;
     private long animElapsed;
     private Direction pending;
+    /** 직전에 막힌 입력의 이유(없으면 null)와 그 뒤 경과 시간. */
+    private BlockReason blocked;
+    private long blockedElapsed;
 
     private final MenuList pauseMenu;
     private MenuList clearMenu;
@@ -85,6 +92,10 @@ final class PlayScreen implements Screen {
     @Override
     public void tick(long dt) {
         cam.update(dt);
+        if (blocked != null) {
+            blockedElapsed += dt;
+            if (blockedElapsed >= FLASH_MS) blocked = null;
+        }
         if (animStep == null) return;
         animElapsed += dt;
         if (animElapsed >= ANIM_MS) {
@@ -106,8 +117,13 @@ final class PlayScreen implements Screen {
         }
         StepResult r = session.move(d);
         if (r != null) {
+            blocked = null;
             animStep = r;
             animElapsed = 0;
+        } else {
+            // 막혔다: 이동 횟수에는 포함되지 않는다. 무엇이 막았는지 찾아 화면에 알린다.
+            blocked = Engine.whyBlocked(level, session.state(), d);
+            blockedElapsed = 0;
         }
     }
 
@@ -185,10 +201,12 @@ final class PlayScreen implements Screen {
             }
             case KeyEvent.VK_Z -> {
                 finishAnim();
+                blocked = null;
                 session.undo();
             }
             case KeyEvent.VK_Y -> {
                 finishAnim();
+                blocked = null;
                 session.redo();
             }
             case KeyEvent.VK_V -> {
@@ -216,6 +234,7 @@ final class PlayScreen implements Screen {
             app.focusCanvas();
             if (r != JOptionPane.OK_OPTION) return;
         }
+        blocked = null;
         session.reset();
     }
 
@@ -236,7 +255,7 @@ final class PlayScreen implements Screen {
     public void mouseClicked(int x, int y) {
         if (mode == Mode.PAUSED) pauseAction(pauseMenu.click(x, y));
         else if (mode == Mode.CLEARED) clearAction(clearMenu.click(x, y));
-        else if (canClickMove()) {
+        else if (canAcceptClick()) {
             // Rebuild at event time: resizing, undo and keyboard moves must not leave stale hit boxes.
             var size = app.canvasSize();
             mouseMoves.layout(level, session.state(), renderer, cam, boardArea(size.width, size.height));
@@ -245,8 +264,18 @@ final class PlayScreen implements Screen {
         }
     }
 
+    /** 호버 미리보기를 그릴 수 있는가. 이동 애니메이션 중에는 플레이어가 움직이는 중이라 그리지 않는다. */
     private boolean canClickMove() {
         return mode == Mode.PLAYING && animStep == null && !cam.isAnimating();
+    }
+
+    /**
+     * 클릭 입력을 받을 수 있는가. 이동 애니메이션(110ms) 중에도 받는다: 키보드와 똑같이 move()가
+     * 마지막 입력 하나를 대기열에 넣었다가 애니메이션이 끝나면 실행하므로, 빠르게 클릭해도 입력이 씹히지 않는다.
+     * 시점이 회전하는 중에는 화면 좌표와 칸의 대응이 계속 바뀌므로 받지 않는다.
+     */
+    private boolean canAcceptClick() {
+        return mode == Mode.PLAYING && !cam.isAnimating();
     }
 
     private static Rectangle boardArea(int w, int h) {
@@ -291,6 +320,11 @@ final class PlayScreen implements Screen {
         Rectangle area = boardArea(w, h);
         IsoRenderer.Anim anim = animStep == null ? null
                 : new IsoRenderer.Anim(animStep, Math.min(1.0, (double) animElapsed / ANIM_MS));
+        if (blocked != null && mode == Mode.PLAYING) {
+            renderer.setFlash(blocked.x(), blocked.y(), blocked.z(), flashAlpha());
+        } else {
+            renderer.clearFlash();
+        }
         renderer.render(g, level, session.state(), anim, area, cam, layerFocus);
         if (canClickMove()) {
             mouseMoves.layout(level, session.state(), renderer, cam, area);
@@ -303,6 +337,12 @@ final class PlayScreen implements Screen {
         hud(g, w, h);
         if (mode == Mode.PAUSED) pauseOverlay(g, w, h);
         if (mode == Mode.CLEARED) clearOverlay(g, w, h);
+    }
+
+    /** 막힌 칸 번쩍임 세기: 처음에 가장 강하고, 두 번 깜빡이며 점점 약해진다. */
+    private float flashAlpha() {
+        float e = Math.min(1f, blockedElapsed / (float) FLASH_MS);
+        return 0.8f * (1f - e) * (0.5f + 0.5f * (float) Math.cos(4 * Math.PI * e));
     }
 
     private void hud(Graphics2D g, int w, int h) {
@@ -328,6 +368,12 @@ final class PlayScreen implements Screen {
                 ? "2D 탑뷰   되돌리기 " + session.undoCount() + "회"
                 : "층 " + (level.z(session.state().player) + 1) + " / " + level.h
                         + "   되돌리기 " + session.undoCount() + "회", w - 24, 64);
+
+        if (layerFocus && !flat) {
+            g.setFont(Theme.font(Font.BOLD, 15f));
+            g.setColor(Theme.ACCENT);
+            Gfx.right(g, "층 강조 켜짐  (Tab으로 끄기)", w - 24, 90);
+        }
 
         g.setFont(Theme.font(Font.PLAIN, 14f));
         g.setColor(Theme.TEXT_DIM);

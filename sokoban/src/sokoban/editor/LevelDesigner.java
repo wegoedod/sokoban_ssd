@@ -58,8 +58,23 @@ public final class LevelDesigner {
         frame=host;
         Container previous=host.getContentPane(); Dimension size=host.getSize(),minimum=host.getMinimumSize();
         String title=host.getTitle(); int closeOperation=host.getDefaultCloseOperation();
-        WindowAdapter guard=new WindowAdapter(){public void windowClosing(WindowEvent e){if(discardOkay())System.exit(0);}};
-        returnToGame=()->{if(!discardOkay())return;host.removeWindowListener(guard);host.setContentPane(previous);host.setMinimumSize(minimum);host.setSize(size);host.setTitle(title);host.setDefaultCloseOperation(closeOperation);host.revalidate();host.repaint();onReturn.run();};
+        final boolean[] returning=new boolean[]{false};
+        WindowAdapter guard=new WindowAdapter(){public void windowClosing(WindowEvent e){
+            if(!returning[0])returnToGame.run();
+        }};
+        returnToGame=()->{
+            if(returning[0]||!discardOkay())return;
+            returning[0]=true;
+            host.removeWindowListener(guard);
+            host.setContentPane(previous);
+            host.setMinimumSize(minimum);
+            host.setSize(size);
+            host.setTitle(title);
+            host.setDefaultCloseOperation(closeOperation);
+            host.revalidate();
+            host.repaint();
+            onReturn.run();
+        };
         host.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);host.addWindowListener(guard);mount();
     }
     private void mount() {
