@@ -124,13 +124,29 @@ public final class MouseMovesTest {
         check(pick(mouse, renderer, 2, 2, 1, false) == null, "cleared targets must not respond");
     }
 
+    /** 막힘 안내: 잠긴 순서 목표를 짚어 "먼저 N번 목표에 상자를 넣으세요"로 안내한다. */
+    private static void lockedGoalGuidance() throws Exception {
+        Level lv = sokoban.level.LevelParser.parse("guide", java.util.List.of(
+                "id: G", "layer 0", "#######", "#@1-2-#", "#-$-$-#", "#-----#", "#######"));
+        var why = new sokoban.core.BlockReason(sokoban.core.BlockReason.Kind.LOCKED_GOAL, 4, 1, 0);
+        String text = BlockText.text(lv, lv.initial, why);
+        check(text.contains("2번 목표"), "잠긴 목표 번호를 알려 준다: " + text);
+        check(text.contains("먼저 1번 목표에 상자를 넣으세요"), "앞 번호 목표를 안내한다: " + text);
+        var push = new sokoban.core.BlockReason(sokoban.core.BlockReason.Kind.PUSH_LOCKED_GOAL, 4, 1, 0);
+        check(BlockText.text(lv, lv.initial, push).contains("상자를 넣을 수 없습니다"), "밀기 안내");
+        // 순서 목표가 아닌 칸을 가리키면 일반 문구로 물러난다(격자 밖 포함)
+        var odd = new sokoban.core.BlockReason(sokoban.core.BlockReason.Kind.LOCKED_GOAL, -1, 0, 0);
+        check(BlockText.text(lv, lv.initial, odd).contains("잠겨"), "fallback");
+    }
+
     /** Generate review images without a window or changing the user's save. */
     public static void main(String[] args) throws Exception {
         flatNeighbourClicksAndIgnoredCells();
         allSixCellsAtEveryCameraAngle();
         blockedClicksAndVerticalPushes();
         resizeAnimationAndClearedTargets();
-        System.out.println("4 focused mouse checks passed.");
+        lockedGoalGuidance();
+        System.out.println("5 focused mouse checks passed.");
         if (args.length == 0) return;
         Path dir = Path.of(args[0]);
         Files.createDirectories(dir);

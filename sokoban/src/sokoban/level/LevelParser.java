@@ -32,15 +32,16 @@ import java.util.TreeMap;
  *
  * 문자: {@code #}벽 {@code -}(또는 공백)빈 공간 {@code .}목표 {@code O}구멍 {@code =}메워진 구멍(처음부터 평지)
  * {@code ~}빙판 {@code A}{@code B}포탈 {@code $}블록 {@code *}목표 위 블록
- * {@code @}플레이어 {@code +}목표 위 플레이어, {@code 1}~{@code 9}순서 열쇠(번호), {@code K}순서 열쇠 1(단일 열쇠).
+ * {@code @}플레이어 {@code +}목표 위 플레이어, {@code 1}~{@code 9}순서 목표(번호).
  * 층은 {@code layer N}으로 나눈다(0부터 연속, 0이 맨 아래). 격자 밖은 고체다.
  *
  * <p>포탈은 문자마다 정확히 두 칸이 있어야 한다(레벨 디자인 M-04). 두 칸은 서로의 짝이며 같은 층일 필요는 없다.
  * 레벨 에디터가 내보내는 2D 맵은 {@code layer 0} 한 층짜리 레벨로 그대로 읽힌다.
  *
- * <p>순서 열쇠: 번호는 1부터 빠짐없이 이어져야 하고(예: 1, 2, 3) 중복될 수 없다. 열쇠가 있는 레벨은
- * 모든 열쇠를 순서대로 얻기 전까지 목표가 잠기므로, 목표 위에 플레이어({@code +})나 블록({@code *})을 두고
- * 시작할 수 없다. {@code K}는 {@code 1}과 같은 열쇠다.
+ * <p>순서 목표: 숫자 칸은 목표({@link TileType#GOAL})이면서 순서 번호를 가진다. 번호는 1부터 빠짐없이 이어져야 하고
+ * (예: 1, 2, 3) 중복될 수 없다. 1번 목표에 상자를 넣어야 2번이 열리므로, 순서 목표는 처음부터 상자나 플레이어가
+ * 올라간 채로 시작할 수 없다. 숫자 기호에는 상자·플레이어를 겹쳐 쓰는 표기가 없으므로({@code *}·{@code +}는
+ * 번호 없는 일반 목표다) 이런 시작 상태는 형식 자체로 표현되지 않는다.
  */
 public final class LevelParser {
     private LevelParser() {
@@ -140,10 +141,9 @@ public final class LevelParser {
         List<Integer> holes = new ArrayList<>();
         int player = -1;
         int goalCount = 0;
-        // 순서 열쇠: 셀 인덱스별 번호(0=열쇠 아님) / 번호 → 처음 나온 줄(중복·빠진 번호 보고용)
-        int[] keyOrder = new int[tiles.length];
-        Map<Integer, Integer> keyLine = new HashMap<>();
-        int blockOnGoalLine = -1, playerOnGoalLine = -1;
+        // 순서 목표: 셀 인덱스별 번호(0=일반 목표 또는 목표 아님) / 번호 → 처음 나온 줄(중복 보고용)
+        int[] goalOrder = new int[tiles.length];
+        Map<Integer, Integer> orderLine = new HashMap<>();
         // 포탈: 문자 → 셀 목록 / 처음 나온 줄 번호(오류 보고용)
         Map<Character, List<Integer>> portalCells = new TreeMap<>();
         Map<Character, Integer> portalFirstLine = new HashMap<>();
@@ -171,22 +171,20 @@ public final class LevelParser {
                         case '*' -> { t = TileType.GOAL; block = true; }
                         case '@' -> { t = TileType.EMPTY; pl = true; }
                         case '+' -> { t = TileType.GOAL; pl = true; }
-                        case '1', '2', '3', '4', '5', '6', '7', '8', '9' -> { t = TileType.EMPTY; keyOrder[idx] = c - '0'; }
-                        case 'K' -> { t = TileType.EMPTY; keyOrder[idx] = 1; }
+                        // 숫자는 번호가 붙은 목표(순서 목표)다. 지형은 목표 칸이고, 순서만 따로 기록한다.
+                        case '1', '2', '3', '4', '5', '6', '7', '8', '9' -> { t = TileType.GOAL; goalOrder[idx] = c - '0'; }
                         default -> throw new LevelFormatException(source, ln,
                                 "알 수 없는 문자 '" + c + "' (x=" + x + ", y=" + y + ", layer " + z + ")");
                     }
                     tiles[idx] = t;
                     if (t == TileType.GOAL) goalCount++;
-                    if (keyOrder[idx] > 0) {
-                        Integer prev = keyLine.putIfAbsent(keyOrder[idx], ln);
+                    if (goalOrder[idx] > 0) {
+                        Integer prev = orderLine.putIfAbsent(goalOrder[idx], ln);
                         if (prev != null) {
-                            throw new LevelFormatException(source, ln, "순서 열쇠 " + keyOrder[idx]
-                                    + "번이 두 번 나왔다 (처음: " + prev + "번째 줄). 'K'는 1번 열쇠와 같다.");
+                            throw new LevelFormatException(source, ln, "순서 목표 " + goalOrder[idx]
+                                    + "번이 두 번 나왔다 (처음: " + prev + "번째 줄).");
                         }
                     }
-                    if (t == TileType.GOAL && block) blockOnGoalLine = ln;
-                    if (t == TileType.GOAL && pl) playerOnGoalLine = ln;
                     if (t == TileType.HOLE && !filledHole) holes.add(idx);
                     if (t == TileType.PORTAL) {
                         portalCells.computeIfAbsent(c, k -> new ArrayList<>()).add(idx);
@@ -203,21 +201,11 @@ public final class LevelParser {
             }
         }
         if (player < 0) throw new LevelFormatException(source, 0, "플레이어('@' 또는 '+')가 없다.");
-        if (goalCount == 0) throw new LevelFormatException(source, 0, "목표 지점('.')이 없다.");
-        if (!keyLine.isEmpty()) {
-            for (int o = 1; o <= keyLine.size(); o++) {
-                if (!keyLine.containsKey(o)) {
-                    throw new LevelFormatException(source, 0, "순서 열쇠 번호는 1부터 "
-                            + keyLine.size() + "까지 빠짐없이 이어져야 한다 (없는 번호 " + o + ").");
-                }
-            }
-            if (blockOnGoalLine > 0) {
-                throw new LevelFormatException(source, blockOnGoalLine,
-                        "순서 열쇠가 있는 레벨에서는 목표 위에 블록('*')을 두고 시작할 수 없다. 열쇠를 다 모아야 목표가 열린다.");
-            }
-            if (playerOnGoalLine > 0) {
-                throw new LevelFormatException(source, playerOnGoalLine,
-                        "순서 열쇠가 있는 레벨에서는 플레이어('+')가 목표 위에서 시작할 수 없다. 열쇠를 다 모아야 목표가 열린다.");
+        if (goalCount == 0) throw new LevelFormatException(source, 0, "목표가 없다('.' 또는 '1'~''9').");
+        for (int o = 1; o <= orderLine.size(); o++) {
+            if (!orderLine.containsKey(o)) {
+                throw new LevelFormatException(source, 0, "순서 목표 번호는 1부터 "
+                        + orderLine.size() + "까지 빠짐없이 이어져야 한다 (없는 번호 " + o + ").");
             }
         }
         for (Map.Entry<Character, List<Integer>> e : portalCells.entrySet()) {
@@ -255,13 +243,13 @@ public final class LevelParser {
                 portalChar[second] = e.getKey();
             }
         }
-        // 난이도 D(FR-5.3)의 기믹 항: 포탈은 쌍의 수, 순서 열쇠는 열쇠 수를 인스턴스 수로 센다
+        // 난이도 D(FR-5.3)의 기믹 항: 포탈은 쌍의 수, 순서 목표는 목표 칸 수를 인스턴스 수로 센다
         Map<String, Integer> gimmicks = new LinkedHashMap<>();
         if (!portalCells.isEmpty()) gimmicks.put("portal", portalCells.size());
-        if (!keyLine.isEmpty()) gimmicks.put("sequence_key", keyLine.size());
-        int[] keys = keyLine.isEmpty() ? null : keyOrder;
+        if (!orderLine.isEmpty()) gimmicks.put("sequence_goal", orderLine.size());
+        int[] orders = orderLine.isEmpty() ? null : goalOrder;
         return new Level(id, name, w, d, h, tiles, init, opt, solution, s3, s2, gimmicks, source,
-                pull, partner, portalChar, keys);
+                pull, partner, portalChar, orders);
     }
 
     private static boolean boolMeta(String source, Map<String, String> meta, Map<String, Integer> metaLine,

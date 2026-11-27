@@ -2,7 +2,14 @@ package sokoban.core;
 
 import java.util.Map;
 
-/** 레벨 정의(불변). 3차원 격자 W×D×H + 메타데이터. z=0이 가장 아래 층이다. */
+/**
+ * 레벨 정의(불변). 3차원 격자 W×D×H + 메타데이터. z=0이 가장 아래 층이다.
+ *
+ * <p>순서 목표: {@code '1'}~{@code '9'} 칸은 {@link TileType#GOAL}이면서 {@link #goalOrder(int)}가 1~9인
+ * <b>순서 목표</b>다. 번호가 없는 목표({@code '.'})는 순서 0인 일반 목표로 항상 활성이다. 어떤 목표가
+ * 열려 있는지는 순수하게 {@link GameState}의 상자 배치로 계산되므로({@link GameState#unlockedGoalOrder}),
+ * 되돌리기·다시 하기·리셋·솔버가 따로 기억할 상태가 없다.
+ */
 public final class Level {
     public final String id;
     public final String name;
@@ -26,10 +33,12 @@ public final class Level {
     private final int[] portalPartner;
     /** 포탈 칸의 식별 문자('A', 'B'). 포탈이 없으면 null, 포탈이 아닌 칸은 0. */
     private final char[] portalChar;
-    /** 셀 인덱스별 순서 열쇠 번호(1..9). 열쇠가 아닌 칸은 0, 열쇠가 없는 레벨은 null. */
-    private final int[] keyOrder;
-    /** 이 레벨의 순서 열쇠 수. 0이면 목표가 처음부터 활성이다. */
-    public final int keyCount;
+    /** 셀 인덱스별 순서 목표 번호(1..9). 순서 목표가 아닌 칸은 0, 순서 목표가 없는 레벨은 null. */
+    private final int[] goalOrder;
+    /** 이 레벨의 순서 목표 수. 0이면 모든 목표가 처음부터 활성이다. */
+    public final int sequenceGoalCount;
+    /** 순서 번호 → 셀 인덱스(1..sequenceGoalCount). 순서 목표가 없으면 null. */
+    private final int[] sequenceCell;
 
     public Level(String id, String name, int w, int d, int h, TileType[] tiles, GameState initial,
                  int optimalMoves, String solution, Double star3Ratio, Double star2Ratio,
@@ -52,26 +61,26 @@ public final class Level {
     }
 
     /**
-     * @param keyOrder 셀 인덱스별 순서 열쇠 번호(1..9, 열쇠가 아닌 칸은 0). 열쇠가 없으면 null.
-     *                 번호는 1부터 빠짐없이 이어져야 하며 중복될 수 없다.
+     * @param goalOrder 셀 인덱스별 순서 목표 번호(1..9, 순서 목표가 아닌 칸은 0). 순서 목표가 없으면 null.
+     *                  번호는 1부터 빠짐없이 이어져야 하며 중복될 수 없고, 그 칸은 {@link TileType#GOAL}이어야 한다.
      */
     public Level(String id, String name, int w, int d, int h, TileType[] tiles, GameState initial,
                  int optimalMoves, String solution, Double star3Ratio, Double star2Ratio,
                  Map<String, Integer> gimmicks, String source,
-                 boolean pullAllowed, int[] portalPartner, char[] portalChar, int[] keyOrder) {
+                 boolean pullAllowed, int[] portalPartner, char[] portalChar, int[] goalOrder) {
         if ((portalPartner == null) != (portalChar == null)) {
             throw new IllegalArgumentException("portalPartner와 portalChar는 함께 주거나 함께 null이어야 한다.");
         }
         if (portalPartner != null && (portalPartner.length != tiles.length || portalChar.length != tiles.length)) {
             throw new IllegalArgumentException("포탈 배열 길이가 셀 수와 다르다.");
         }
-        if (keyOrder != null && keyOrder.length != tiles.length) {
-            throw new IllegalArgumentException("순서 열쇠 배열 길이가 셀 수와 다르다.");
+        if (goalOrder != null && goalOrder.length != tiles.length) {
+            throw new IllegalArgumentException("순서 목표 배열 길이가 셀 수와 다르다.");
         }
         this.pullAllowed = pullAllowed;
         this.portalPartner = portalPartner == null ? null : portalPartner.clone();
         this.portalChar = portalChar == null ? null : portalChar.clone();
-        this.keyOrder = keyOrder == null ? null : keyOrder.clone();
+        this.goalOrder = goalOrder == null ? null : goalOrder.clone();
         this.id = id;
         this.name = name;
         this.w = w;
@@ -84,23 +93,33 @@ public final class Level {
         this.star3Ratio = star3Ratio;
         this.star2Ratio = star2Ratio;
         this.source = source;
-        int keys = 0;
-        if (this.keyOrder != null) {
+        int seq = 0;
+        int[] cellOf = null;
+        if (this.goalOrder != null) {
             boolean[] used = new boolean[10];
-            for (int o : this.keyOrder) {
+            for (int i = 0; i < this.goalOrder.length; i++) {
+                int o = this.goalOrder[i];
                 if (o == 0) continue;
-                if (o < 1 || o > 9) throw new IllegalArgumentException("순서 열쇠 번호는 1~9여야 한다: " + o);
-                if (used[o]) throw new IllegalArgumentException("순서 열쇠 " + o + "번이 두 번 나왔다.");
+                if (o < 1 || o > 9) throw new IllegalArgumentException("순서 목표 번호는 1~9여야 한다: " + o);
+                if (used[o]) throw new IllegalArgumentException("순서 목표 " + o + "번이 두 번 나왔다.");
+                if (this.tiles[i] != TileType.GOAL) throw new IllegalArgumentException("순서 목표 " + o + "번 칸이 GOAL이 아니다.");
                 used[o] = true;
-                keys++;
+                seq++;
             }
-            for (int o = 1; o <= keys; o++) {
-                if (!used[o]) throw new IllegalArgumentException("순서 열쇠 번호는 1부터 " + keys + "까지 이어져야 한다 (없는 번호 " + o + ").");
+            for (int o = 1; o <= seq; o++) {
+                if (!used[o]) throw new IllegalArgumentException("순서 목표 번호는 1부터 " + seq + "까지 이어져야 한다 (없는 번호 " + o + ").");
+            }
+            if (seq > 0) {
+                cellOf = new int[seq + 1];
+                for (int i = 0; i < this.goalOrder.length; i++) {
+                    if (this.goalOrder[i] > 0) cellOf[this.goalOrder[i]] = i;
+                }
             }
         }
-        this.keyCount = keys;
+        this.sequenceGoalCount = seq;
+        this.sequenceCell = cellOf;
         Map<String, Integer> g = new java.util.LinkedHashMap<>(gimmicks);
-        if (keys > 0) g.put("sequence_key", keys);
+        if (seq > 0) g.put("sequence_goal", seq);
         this.gimmicks = Map.copyOf(g);
         int n = 0;
         for (TileType t : tiles) if (t == TileType.GOAL) n++;
@@ -143,19 +162,27 @@ public final class Level {
         return portalChar == null ? 0 : portalChar[idx];
     }
 
-    /** idx에 있는 순서 열쇠의 번호(1..9). 열쇠가 아니면 0. */
-    public int keyOrder(int idx) {
-        return keyOrder == null ? 0 : keyOrder[idx];
+    /** idx가 순서 목표면 그 번호(1..9). 일반 목표·목표 아님은 0. */
+    public int goalOrder(int idx) {
+        return goalOrder == null ? 0 : goalOrder[idx];
     }
 
-    /** idx에 순서 열쇠가 있는가. */
-    public boolean isKey(int idx) {
-        return keyOrder != null && keyOrder[idx] > 0;
+    /** idx가 순서 목표인가(번호가 매겨진 목표). */
+    public boolean isSequenceGoal(int idx) {
+        return goalOrder != null && goalOrder[idx] > 0;
     }
 
-    /** 이 레벨에 순서 열쇠가 있는가. 없으면 목표는 처음부터 활성이다. */
-    public boolean hasKeys() {
-        return keyCount > 0;
+    /** 이 레벨에 순서 목표가 있는가. 없으면 모든 목표가 처음부터 활성이다. */
+    public boolean hasSequenceGoals() {
+        return sequenceGoalCount > 0;
+    }
+
+    /** order번 순서 목표의 셀 인덱스(1..sequenceGoalCount). */
+    public int sequenceGoalCell(int order) {
+        if (sequenceCell == null || order < 1 || order > sequenceGoalCount) {
+            throw new IllegalArgumentException("없는 순서 목표 번호: " + order);
+        }
+        return sequenceCell[order];
     }
 
     /** idx에서 dir 방향 이웃 칸. 격자 밖이면 -1 (격자 밖은 고체로 취급한다). */
@@ -190,6 +217,6 @@ public final class Level {
 
     public Level withSolution(int optimalMoves, String solution) {
         return new Level(id, name, w, d, h, tiles, initial, optimalMoves, solution,
-                star3Ratio, star2Ratio, gimmicks, source, pullAllowed, portalPartner, portalChar, keyOrder);
+                star3Ratio, star2Ratio, gimmicks, source, pullAllowed, portalPartner, portalChar, goalOrder);
     }
 }

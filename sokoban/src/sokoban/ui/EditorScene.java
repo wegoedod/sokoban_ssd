@@ -39,25 +39,35 @@ public final class EditorScene {
             }
         }
     }
-    private static boolean known(String id){return Set.of("empty","wall","goal","hole","filled_hole","ice","portal_a","portal_b","sequence_key","box","player").contains(id);}
+    private static boolean known(String id){return Set.of("empty","wall","goal","hole","filled_hole","ice","portal_a","portal_b","sequence_goal","box","player").contains(id);}
     private static Level adapt(EditorDocument d,int onlyLayer) {
         TileType[] tiles=new TileType[d.width*d.depth*d.floors];Arrays.fill(tiles,TileType.EMPTY);
         List<Integer> boxes=new ArrayList<>(),holes=new ArrayList<>();int player=-1;
         int[] partners=new int[tiles.length];Arrays.fill(partners,-1);char[] portals=new char[tiles.length];
-        int[] keys=new int[tiles.length];
+        int[] orders=new int[tiles.length];
         for(int z=0;z<d.floors;z++)if(onlyLayer<0||z==onlyLayer)for(int y=0;y<d.depth;y++)for(int x=0;x<d.width;x++) {
             int i=d.index(x,y,z);var c=d.cell(x,y,z);tiles[i]=switch(c.terrain()){
-                case "wall"->TileType.WALL;case "goal"->TileType.GOAL;case "hole","filled_hole"->TileType.HOLE;
+                case "wall"->TileType.WALL;case "goal","sequence_goal"->TileType.GOAL;case "hole","filled_hole"->TileType.HOLE;
                 case "ice"->TileType.ICE;case "portal_a","portal_b"->TileType.PORTAL;default->TileType.EMPTY;};
-            if(c.terrain().equals("sequence_key"))keys[i]=keyNumber(c.terrainProps());
+            if(c.terrain().equals("sequence_goal"))orders[i]=goalOrderNumber(c.terrainProps());
             if(c.terrain().equals("hole"))holes.add(i);if(tiles[i]==TileType.PORTAL)portals[i]=c.terrain().equals("portal_b")?'B':'A';
             if(c.entity().equals("box"))boxes.add(i);if(c.entity().equals("player"))player=i;
         }
         return new Level(d.id,d.name,d.width,d.depth,d.floors,tiles,
-                GameState.of(player,boxes.stream().mapToInt(i->i).toArray(),holes.stream().mapToInt(i->i).toArray()),-1,"",null,null,Map.of(),"editor",d.pull,partners,portals,keys);
+                GameState.of(player,boxes.stream().mapToInt(i->i).toArray(),holes.stream().mapToInt(i->i).toArray()),-1,"",null,null,Map.of(),"editor",d.pull,partners,portals,previewOrders(orders,tiles.length));
     }
-    /** 순서 열쇠 블록의 {@code order} 속성(1~9). 없거나 잘못되었으면 1번으로 본다. */
-    private static int keyNumber(java.util.Map<String,String> props) {
+    /**
+     * 설계 중에는 순서 목표 번호가 아직 1..k로 완성되지 않았을 수 있다(예: 2번만 배치). 그런 번호는
+     * 미리보기에서 번호 없는 목표로 그려 미리보기가 깨지지 않게 한다. 내보내기 검증은 EditorIO가 한다.
+     */
+    private static int[] previewOrders(int[] orders,int n) {
+        int max=0;boolean[] seen=new boolean[10];
+        for(int o:orders){ if(o==0) continue; if(o>9||seen[o]) return new int[n]; seen[o]=true; max=Math.max(max,o); }
+        for(int o=1;o<=max;o++) if(!seen[o]) return new int[n];
+        return orders;
+    }
+    /** 순서 목표 블록의 {@code order} 속성(1~9). 없거나 잘못되었으면 1번으로 본다. */
+    private static int goalOrderNumber(java.util.Map<String,String> props) {
         try { int n=Integer.parseInt(props.getOrDefault("order","1").trim()); return n>=1&&n<=9?n:1; }
         catch(RuntimeException e) { return 1; }
     }

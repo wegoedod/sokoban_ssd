@@ -31,11 +31,10 @@ final class Theme {
     static final Color ICE = new Color(0xe3f4ff);
     static final Color PORTAL_A = new Color(0x8f6bff);
     static final Color PORTAL_B = new Color(0xff5fa8);
-    /** 순서 열쇠: 다음에 먹을 열쇠(밝게) / 아직 차례가 아닌 열쇠(흐리게). */
-    static final Color KEY = new Color(0xffe08a);
-    static final Color KEY_DIM = new Color(0x9a916f);
-    /** 잠긴 목표: 열쇠를 다 모으기 전의 목표 칸. */
-    static final Color GOAL_LOCKED = new Color(0xa9b1cd);
+    /** 잠긴 순서 목표: 앞 번호를 채우기 전의 목표 칸(어두운 회색 + 자물쇠). */
+    static final Color GOAL_LOCKED = new Color(0x5d6478);
+    /** 순서 목표 번호 패의 글자색. */
+    static final Color GOAL_NUMBER = new Color(0x2b2340);
     static final Color PLAYER = new Color(0x52e0ff);
     /** 막힌 입력에서 막은 칸을 번쩍일 때 쓰는 경고색. */
     static final Color BLOCKED = new Color(0xff4d4d);

@@ -46,7 +46,7 @@ public final class GameConfig {
         maxChain = intOf(p, "maxChain", 3, 1, 100);
         Map<String, Double> w = new LinkedHashMap<>();
         double[] defaults = {1.0, 1.0, 1.5, 1.5, 1.5, 2.0, 2.0};
-        String[] names = {"direction", "stairs", "gravity", "chain", "lift", "portal", "sequence_key"};
+        String[] names = {"direction", "stairs", "gravity", "chain", "lift", "portal", "sequence_goal"};
         for (int i = 0; i < names.length; i++) {
             w.put(names[i], doubleOf(p, "weight." + names[i], defaults[i], 0, 1e6));
         }

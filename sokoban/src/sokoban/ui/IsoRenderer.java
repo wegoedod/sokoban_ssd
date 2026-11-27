@@ -226,16 +226,16 @@ final class IsoRenderer {
         layerGuides(g, lv, activeLayer);
         layerPlane(g, lv, editorLayer >= 0 ? editorLayer : pz);
 
-        // 2) 바닥 그림자 / 목표 표시 (높이 단서). 잠긴 목표는 회색 테두리와 자물쇠로 구분한다.
-        boolean goalsOpen = st.goalsUnlocked(lv);
+        // 2) 바닥 그림자 / 목표 표시 (높이 단서). 아직 열리지 않은 순서 목표는 어두운 회색 테두리와 자물쇠로 구분한다.
         g.setStroke(new BasicStroke(1.4f));
         for (int gi : lv.goals) {
-            Color gc = goalsOpen ? Theme.GOAL : Theme.GOAL_LOCKED;
-            g.setColor(alpha(gc, goalsOpen ? 0.55f : 0.62f));
+            boolean open = st.goalUnlocked(lv, gi);
+            Color gc = open ? Theme.GOAL : Theme.GOAL_LOCKED;
+            g.setColor(alpha(gc, open ? 0.55f : 0.62f));
             g.draw(square(lv.x(gi) + 0.12, lv.y(gi) + 0.12, 0.76, 0));
-            if (!goalsOpen) {
-                // 잠긴 목표: 흐린 회색 테두리 + 자물쇠. 열쇠를 모두 모으면 사라지고 금색 테두리만 남는다.
-                lockMark(g, lv.x(gi) + 0.5, lv.y(gi) + 0.5, 0);
+            if (!open) {
+                // 잠긴 목표: 어두운 회색 테두리 + 자물쇠. 앞 번호 목표를 채우면 사라지고 금색 테두리만 남는다.
+                lockMark(g, lv.x(gi) + 0.5, lv.y(gi) + 0.5, lv.z(gi));
             }
         }
         for (int i = 0; i < st.blockCount(); i++) {
@@ -261,7 +261,7 @@ final class IsoRenderer {
                 }
                 case GOAL -> {
                     if (!st.hasBlock(idx) && idx != pushedTo) {
-                        final boolean open = goalsOpen;
+                        final boolean open = st.goalUnlocked(lv, idx);
                         items.add(new Item(key, 0, () -> cube(g, x, y, z, open ? Theme.GOAL : Theme.GOAL_LOCKED,
                                 open ? 0.22f : 0.20f)));
                     }
@@ -281,17 +281,16 @@ final class IsoRenderer {
                 }
             }
         }
-        // 남아 있는 순서 열쇠: 다음 차례(밝게)와 뒷번호(흐리게)를 숫자로 구분해 그린다.
-        if (lv.hasKeys()) {
-            int progress = st.keyProgress();
-            for (int idx = 0; idx < lv.cellCount(); idx++) {
-                int order = lv.keyOrder(idx);
-                if (order <= 0 || order <= progress) continue;
-                final double x = lv.x(idx), y = lv.y(idx), z = lv.z(idx);
-                final int number = order;
-                final boolean next = order == progress + 1;
+        // 순서 목표 번호: 칸 위에 번호 패를 띄운다. 상자가 올라간 목표는 초록(채움), 활성 목표는 금색, 잠긴 목표는 회색.
+        if (lv.hasSequenceGoals()) {
+            for (int gi : lv.goals) {
+                final int order = lv.goalOrder(gi);
+                if (order <= 0) continue;
+                final double x = lv.x(gi), y = lv.y(gi), z = lv.z(gi);
+                final boolean open = st.goalUnlocked(lv, gi);
+                final boolean filled = st.hasBlock(gi) || gi == pushedTo;
                 items.add(new Item(depth(x + 0.5, y + 0.5, layerBase(z) + 0.5) + 1e-4, 1,
-                        () -> keyToken(g, x, y, z, number, next)));
+                        () -> goalNumber(g, x, y, z, order, open, filled)));
             }
         }
         for (int i = 0; i < st.blockCount(); i++) {
@@ -339,7 +338,8 @@ final class IsoRenderer {
         for (int gi : lv.goals) {
             if (st.hasBlock(gi)) continue;
             if (lv.z(gi) + 0.5 > layerZ) continue;
-            g.setColor(alpha(goalsOpen ? Theme.GOAL : Theme.GOAL_LOCKED, goalsOpen ? 0.7f : 0.5f));
+            boolean open = st.goalUnlocked(lv, gi);
+            g.setColor(alpha(open ? Theme.GOAL : Theme.GOAL_LOCKED, open ? 0.7f : 0.5f));
             cubeEdges(g, lv.x(gi), lv.y(gi), lv.z(gi));
         }
         g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.35f));
@@ -449,7 +449,7 @@ final class IsoRenderer {
         }
     }
 
-    /** 잠긴 목표 칸 가운데의 작은 자물쇠(화면 기준 아이콘). 위치는 칸 중심 바닥 좌표. */
+    /** 잠긴 목표 칸 가운데의 작은 자물쇠(화면 기준 아이콘). 위치는 그 층 칸 중심 바닥 좌표. */
     private void lockMark(Graphics2D g, double cx, double cy, double z) {
         double[] c = pt(cx, cy, layerBase(z));
         double w = Math.max(9, Math.min(20, S * scale * 0.34));
@@ -464,23 +464,24 @@ final class IsoRenderer {
     }
 
     /**
-     * 순서 열쇠 표시: 칸 위 공중에 뜬 둥근 패에 번호를 쓴다. 다음에 먹을 열쇠는 밝게, 뒷번호는 흐리게.
-     * 먹은 열쇠는 게임 상태에서 빠지므로 여기까지 오지 않는다.
+     * 순서 목표 번호 표시: 칸 위에 뜬 둥근 패에 번호를 쓴다.
+     * 채운 목표는 초록(상자 위에 올라앉는다), 지금 채울 수 있는 목표는 금색, 잠긴 목표는 어두운 회색이다.
      */
-    private void keyToken(Graphics2D g, double x, double y, double z, int order, boolean next) {
+    private void goalNumber(Graphics2D g, double x, double y, double z, int order, boolean open, boolean filled) {
         float la = layerAlpha(z);
         if (la <= 0.06f) return;
-        double[] c = pt(x + .5, y + .5, layerBase(z) + .80);
+        double[] c = pt(x + .5, y + .5, layerBase(z) + (filled ? 1.02 : .80));
         int r = (int) Math.max(8, Math.min(17, S * scale * 0.30));
-        Color base = next ? Theme.KEY : Theme.KEY_DIM;
+        Color base = filled ? Theme.BLOCK_ON_GOAL : open ? Theme.GOAL : Theme.GOAL_LOCKED;
+        float strength = filled ? 1f : open ? 0.95f : 0.7f;
         java.awt.geom.Ellipse2D disc = new java.awt.geom.Ellipse2D.Double(c[0] - r, c[1] - r, r * 2, r * 2);
-        g.setColor(alpha(base, (next ? 0.95f : 0.55f) * la));
+        g.setColor(alpha(base, strength * la));
         g.fill(disc);
-        g.setStroke(new BasicStroke(next ? 2.2f : 1.2f));
-        g.setColor(alpha(next ? Theme.shade(base, 1.2) : Theme.shade(base, 0.85), la));
+        g.setStroke(new BasicStroke(open || filled ? 2.2f : 1.3f));
+        g.setColor(alpha(Theme.shade(base, open || filled ? 1.2 : 1.35), la));
         g.draw(disc);
         g.setFont(Theme.font(Font.BOLD, Math.max(9f, r * 1.15f)));
-        g.setColor(alpha(next ? new Color(0x2b2340) : new Color(0x20222e), la));
+        g.setColor(alpha(open || filled ? Theme.GOAL_NUMBER : Theme.TEXT, la));
         Gfx.centered(g, Integer.toString(order), (int) Math.round(c[0]), (int) Math.round(c[1] + r * 0.38));
     }
 

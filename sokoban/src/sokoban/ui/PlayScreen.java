@@ -117,8 +117,8 @@ final class PlayScreen implements Screen {
             blocked = null;
             animStep = r;
             animElapsed = 0;
-            if (r.goalsJustUnlocked()) {
-                app.notify("순서 열쇠를 모두 모았습니다 · 목표 칸이 열렸습니다");
+            if (r.goalOpened()) {
+                app.notify(r.openedGoalOrder() + "번 목표가 열렸습니다 · 상자를 넣으세요");
             }
         } else {
             // 막혔다: 이동 횟수에는 포함되지 않는다. 무엇이 막았는지 찾아 화면에 알린다.
@@ -361,13 +361,12 @@ final class PlayScreen implements Screen {
         g.setFont(Theme.font(Font.BOLD, 20f));
         g.setColor(Theme.TEXT);
         Gfx.right(g, "이동 " + session.moves() + (editorReturn != null ? "" : " / 최적 " + level.optimalMoves), w - 24, 40);
-        if (level.hasKeys()) {
-            int got = session.state().keyProgress();
-            boolean open = got >= level.keyCount;
+        if (level.hasSequenceGoals()) {
+            int done = session.state().filledSequenceGoals(level);
             g.setFont(Theme.font(Font.BOLD, 15f));
-            g.setColor(open ? Theme.GOOD : Theme.ACCENT);
-            g.drawString("열쇠 " + got + " / " + level.keyCount
-                    + (open ? " · 목표 열림" : " · 다음 " + (got + 1) + "번"), 24, 90);
+            g.setColor(done >= level.sequenceGoalCount ? Theme.GOOD : Theme.ACCENT);
+            g.drawString("순서 목표 " + done + " / " + level.sequenceGoalCount
+                    + (done >= level.sequenceGoalCount ? " · 모두 채움" : " · 다음 " + (done + 1) + "번"), 24, 90);
         }
 
         g.setFont(Theme.font(Font.PLAIN, 15f));
