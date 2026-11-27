@@ -80,6 +80,10 @@ public final class EditorIO {
         d.star3=lv.star3Ratio;d.star2=lv.star2Ratio;
         for(int z=0;z<lv.h;z++) for(int y=0;y<lv.d;y++) for(int x=0;x<lv.w;x++) {
             int i=lv.idx(x,y,z);
+            if(lv.keyOrder(i)>0) {
+                d.set(x,y,z,new EditorDocument.Cell("sequence_key","",Map.of("order",""+lv.keyOrder(i)),Map.of()));
+                continue;
+            }
             String t=switch(lv.tile(i)) { case EMPTY->"empty"; case WALL->"wall"; case GOAL->"goal";
                 case HOLE->lv.initial.isHole(i)?"hole":"filled_hole"; case ICE->"ice";
                 case PORTAL->lv.portalId(i)=='B'?"portal_b":"portal_a"; };
@@ -100,9 +104,17 @@ public final class EditorIO {
                 String where=" ("+(x+1)+", "+(y+1)+", "+(z+1)+"층)";
                 if(base==null||!base.exportable()||(!cell.entity().isEmpty()&&(ent==null||!ent.exportable())))
                     throw new IOException("게임에서 지원하지 않는 설계용 블록"+where+" — 프로젝트(.slevel)로 저장하세요.");
-                if(!cell.terrainProps().isEmpty()||!cell.entityProps().isEmpty())
-                    throw new IOException("추가 속성은 게임 TXT에 저장할 수 없습니다"+where+" — 프로젝트로 저장하세요.");
                 String symbol=base.symbol();
+                if(base.id().equals("sequence_key")) {
+                    // 순서 열쇠는 order 속성이 게임 규칙(몇 번째 열쇠인지)이므로 기호로 옮긴다. group은 기록용이라 버린다.
+                    for(String key:cell.terrainProps().keySet())
+                        if(!key.equals("order")) throw new IOException("순서 열쇠의 '"+key+"' 속성은 게임 TXT에 저장할 수 없습니다"+where+" — 프로젝트로 저장하세요.");
+                    if(!cell.entityProps().isEmpty())
+                        throw new IOException("순서 열쇠 칸의 개체 속성은 게임 TXT에 저장할 수 없습니다"+where+" — 프로젝트로 저장하세요.");
+                    symbol=keySymbol(cell.terrainProps().getOrDefault("order","1"),where);
+                } else if(!cell.terrainProps().isEmpty()||!cell.entityProps().isEmpty()) {
+                    throw new IOException("추가 속성은 게임 TXT에 저장할 수 없습니다"+where+" — 프로젝트로 저장하세요.");
+                }
                 if(ent!=null) {
                     if(base.id().equals("empty")) symbol=ent.symbol();
                     else if(base.id().equals("goal") && ent.id().equals("box")) symbol="*";
@@ -114,6 +126,15 @@ public final class EditorIO {
             } out.append('\n'); }
         }
         String text=out.toString(); LevelParser.parse("편집 중인 레벨",text.lines().toList()); return text;
+    }
+    /** 순서 열쇠의 order 속성(1~9)을 레벨 기호 하나로 옮긴다. */
+    private static String keySymbol(String order,String where) throws IOException {
+        try {
+            int n=Integer.parseInt(order.trim());
+            if(n>=1&&n<=9) return Integer.toString(n);
+        } catch(RuntimeException ignored) {
+        }
+        throw new IOException("순서 열쇠 번호는 1~9 사이 정수여야 합니다"+where+" — 현재 '"+order+"'");
     }
     public static void writeAtomic(Path destination,String text) throws IOException {
         Path path=destination.toAbsolutePath(); Files.createDirectories(path.getParent());

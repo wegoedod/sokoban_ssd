@@ -27,6 +27,10 @@ public record BlockReason(Kind kind, int x, int y, int z) {
         /** 포탈에 들어가려는데 짝 포탈 칸에 상자가 있어 나갈 수 없다. 막은 칸은 짝 포탈 칸이다. */
         PORTAL,
         /** 상자를 포탈로 밀려는데 짝 포탈 칸이 막혀 있다. 막은 칸은 짝 포탈 칸이다. */
-        PUSH_PORTAL
+        PUSH_PORTAL,
+        /** 플레이어가 잠긴 목표 칸으로 들어가려 한다(순서 열쇠를 다 모으기 전). 막은 칸은 그 목표 칸이다. */
+        LOCKED_GOAL,
+        /** 상자를 잠긴 목표 칸으로 밀려 한다(순서 열쇠를 다 모으기 전). 막은 칸은 그 목표 칸이다. */
+        PUSH_LOCKED_GOAL
     }
 }

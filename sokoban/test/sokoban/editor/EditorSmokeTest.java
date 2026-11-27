@@ -48,6 +48,12 @@ public final class EditorSmokeTest {
             for(int i=0;i<old.cellCount();i++)check(old.tile(i)==next.tile(i)&&old.portalPartner(i)==next.portalPartner(i),"existing terrain: "+file);
             count++;
         }}
-        System.out.println("Editor checks passed: composition, unique player, snapshots, XML properties, safe export, 600 projected cell picks, "+count+" existing levels.");
+        // 순서 열쇠 예제: 게임 TXT를 불러와 다시 내보내도 열쇠 3개와 순서가 그대로다
+        EditorDocument demo=EditorIO.importGame(Path.of("examples","sequence-key-demo.txt"));
+        var seq=LevelParser.parse("demo",EditorIO.gameText(demo,catalog).lines().toList());
+        check(seq.keyCount==3,"sequence key example keeps 3 keys");
+        check(seq.keyOrder(seq.idx(2,1,0))==1&&seq.keyOrder(seq.idx(4,1,0))==2&&seq.keyOrder(seq.idx(6,1,0))==3,"key order kept");
+        check(seq.tile(seq.idx(2,1,0))==sokoban.core.TileType.EMPTY,"key sits on empty floor");
+        System.out.println("Editor checks passed: composition, unique player, snapshots, XML properties, safe export, 600 projected cell picks, "+count+" existing levels, sequence key demo.");
     }
 }

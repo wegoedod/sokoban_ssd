@@ -1,5 +1,6 @@
 package sokoban.ui;
 
+import sokoban.core.GameState;
 import sokoban.core.Level;
 import sokoban.level.LevelFormatException;
 import sokoban.level.LevelParser;
@@ -39,13 +40,17 @@ public final class RenderTest {
     }
 
     private static BufferedImage render(Level lv, boolean layerFocus) {
+        return render(lv, lv.initial, layerFocus);
+    }
+
+    private static BufferedImage render(Level lv, GameState st, boolean layerFocus) {
         BufferedImage img = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = img.createGraphics();
         g.setColor(new Color(BG));
         g.fillRect(0, 0, W, H);
         Camera cam = new Camera();
         if (lv.h == 1) cam.snapToTopView(); else cam.snapToDefaultView();
-        new IsoRenderer().render(g, lv, lv.initial, null, new Rectangle(20, 20, W - 40, H - 40), cam, layerFocus);
+        new IsoRenderer().render(g, lv, st, null, new Rectangle(20, 20, W - 40, H - 40), cam, layerFocus);
         g.dispose();
         return img;
     }
@@ -70,6 +75,27 @@ public final class RenderTest {
         int diff = differingPixels(off, render(lv, true));
         check(diff > 300, "맨 아래층에서 층 강조가 위층을 흐리게 하지 않는다: " + diff);
         check(differingPixels(off, render(lv, false)) == 0, "강조를 끄면 처음과 같아야 한다");
+    }
+
+    /** 잠긴 목표는 회색으로, 열쇠는 번호와 함께 그려지고, 열쇠를 얻으면 화면이 바뀐다. */
+    public static void sequenceKeyRendering() {
+        // 열쇠 1·2와 목표 1개. 처음에는 목표가 잠겨 있고 1번 열쇠가 밝다.
+        Level lv = level("--------,-@12-.-,------$-,--------");
+        int lockedVsOpen = differingPixels(render(lv, false), render(lv, lv.initial.withKeyProgress(2), false));
+        check(lockedVsOpen > 300, "잠긴 목표와 열린 목표가 화면에서 구분되지 않는다: " + lockedVsOpen);
+        // 1번을 얻으면 1번 표시가 사라지고 2번이 다음 차례로 밝아진다
+        int step = differingPixels(render(lv, false), render(lv, lv.initial.withKeyProgress(1), false));
+        check(step > 100, "열쇠 진행에 따라 화면이 바뀌지 않는다: " + step);
+        // 그린 뒤 Graphics 상태는 원래대로다(회귀)
+        BufferedImage img = new BufferedImage(200, 120, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = img.createGraphics();
+        var old = g.getTransform();
+        var clip = g.getClip();
+        Camera cam = new Camera();
+        cam.snapToTopView();
+        new IsoRenderer().render(g, lv, lv.initial, null, new Rectangle(10, 10, 180, 100), cam, false);
+        check(g.getTransform().equals(old) && java.util.Objects.equals(g.getClip(), clip), "그린 뒤 변환·클립이 바뀌었다");
+        g.dispose();
     }
 
     /** 한 층짜리 레벨은 흐려질 층이 없어 층 강조가 화면을 바꾸지 않는다(HUD 배지도 2D에서는 안 띄운다). */

@@ -10,6 +10,9 @@ import sokoban.core.Scoring;
 import sokoban.core.Session;
 import sokoban.core.StepResult;
 import sokoban.core.TileType;
+import sokoban.editor.BlockCatalog;
+import sokoban.editor.EditorDocument;
+import sokoban.editor.EditorIO;
 import sokoban.level.Difficulty;
 import sokoban.level.LevelFormatException;
 import sokoban.level.LevelParser;
@@ -23,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 import static sokoban.Check.*;
@@ -117,6 +121,19 @@ public final class AllTests {
         test("포탈: 솔버가 포탈을 써서 최적해를 찾는다", AllTests::portalSolver);
         test("포탈: 난이도 D에 포탈 가중치가 반영된다", AllTests::portalDifficulty);
         test("포탈: 3D(층 사이) 전송", AllTests::portalAcrossLayers);
+        test("순서 열쇠: 파서가 번호·K·기믹 수를 읽는다", AllTests::sequenceParser);
+        test("순서 열쇠: 파서 오류(중복·빠진 번호·목표 위 시작)", AllTests::sequenceParserErrors);
+        test("순서 열쇠: 번호 순서대로만 얻고 뒷번호는 지나가기만", AllTests::sequenceCollectOrder);
+        test("순서 열쇠: 다 모으기 전 목표 진입·상자 밀기 차단", AllTests::sequenceLockedGoal);
+        test("순서 열쇠: 마지막 열쇠로 목표 활성화·클리어", AllTests::sequenceUnlockAndClear);
+        test("순서 열쇠: 포탈 출구에서 밀어 넣는 상자도 잠긴 목표에 막힘", AllTests::sequencePortalExit);
+        test("순서 열쇠: 3D(층 사이) 열쇠와 목표", AllTests::sequenceAcrossLayers);
+        test("순서 열쇠: 되돌리기·다시 하기·리셋이 진행도를 복원", AllTests::sequenceUndoRedo);
+        test("순서 열쇠: 솔버가 열쇠 순서를 지켜 푼다", AllTests::sequenceSolver);
+        test("순서 열쇠: 난이도 D와 withSolution이 열쇠를 반영", AllTests::sequenceDifficulty);
+        test("순서 열쇠: 상태 equals/hashCode에 진행도 포함", AllTests::sequenceState);
+        test("순서 열쇠: 에디터 왕복(sequence_key order)", AllTests::sequenceEditorRoundTrip);
+        test("순서 열쇠: 렌더에서 잠긴 목표와 열쇠 표시", sokoban.ui.RenderTest::sequenceKeyRendering);
         test("막힘 사유: 사유별 종류와 막은 칸 좌표", AllTests::blockReasonKinds);
         test("막힘 사유: step()이 null일 때만 사유가 있다(출고 레벨 랜덤 이동)", AllTests::blockReasonMatchesStep);
         test("출고 레벨: 모두 검증 완료·풀이 재생·곡선", AllTests::shippedLevels);
@@ -972,6 +989,333 @@ public final class AllTests {
         eq(x, r.x(), "x");
         eq(y, r.y(), "y");
         eq(z, r.z(), "z");
+    }
+
+
+    // ---------- 순서 열쇠 (순서 열쇠 + 목표 활성화 기믹) ----------
+
+    /** 상태를 직접 만든다: 플레이어·상자 좌표(2D)와 먹은 순서 열쇠 수. */
+    static GameState seqState(Level l, int px, int py, int[][] boxes, int keys) {
+        int[] b = new int[boxes.length];
+        for (int i = 0; i < boxes.length; i++) b[i] = at(l, boxes[i][0], boxes[i][1]);
+        return GameState.of(at(l, px, py), b, new int[0], keys);
+    }
+
+    static void sequenceParser() {
+        Level l = lv("#########", "#@12.-$-#", "#########");
+        eq(2, l.keyCount);
+        check(l.hasKeys());
+        eq(1, l.keyOrder(at(l, 2, 1)));
+        eq(2, l.keyOrder(at(l, 3, 1)));
+        eq(0, l.keyOrder(at(l, 1, 1)));
+        check(!l.isKey(at(l, 4, 1)));
+        eq(TileType.EMPTY, l.tile(at(l, 2, 1)));          // 열쇠는 지형이 아니라 별도 층이다
+        eq(2, (int) l.gimmicks.getOrDefault("sequence_key", 0));
+
+        // K는 1번 열쇠의 단일 표기다
+        Level k = lv("#######", "#@K-.-#", "#-$---#", "#######");
+        eq(1, k.keyCount);
+        eq(1, k.keyOrder(at(k, 2, 1)));
+        eq(1, (int) k.gimmicks.getOrDefault("sequence_key", 0));
+
+        // 열쇠가 없는 기존 레벨은 목표가 처음부터 활성이다
+        Level plain = lv("#####", "#@$.#", "#####");
+        eq(0, plain.keyCount);
+        check(plain.initial.goalsUnlocked(plain));
+        check(!l.gimmicks.containsKey("portal"));
+    }
+
+    static void sequenceParserErrors() {
+        // 중복 번호
+        expectError("두 번", 3, "id: A", "layer 0", "#@11$.#");
+        expectError("두 번", 3, "id: A", "layer 0", "#@K1$.#");           // K와 1은 같은 열쇠
+        // 1부터 이어지지 않는 번호
+        expectError("빠짐없이", 0, "id: A", "layer 0", "#@13$.#");
+        // 열쇠가 있으면 목표 위에서 시작할 수 없다
+        expectError("목표 위에 블록", 3, "id: A", "layer 0", "#@1*$#");
+        expectError("플레이어('+')", 3, "id: A", "layer 0", "#-1+$#");
+    }
+
+    static void sequenceCollectOrder() {
+        // 2번이 1번보다 먼저 놓여 있다: 지나갈 수는 있지만 1번을 얻은 뒤 다시 밟아야 얻어진다
+        Level l = lv("########", "#@21.--#", "#--$---#", "########");
+        StepResult first = Engine.step(l, l.initial, Direction.RIGHT);      // 2번 위로
+        notNull(first);
+        eq(at(l, 2, 1), first.state().player);
+        eq(0, first.state().keyProgress());
+        eq(0, first.collectedKeyOrder());
+        check(!first.collectedKey());
+
+        StepResult second = Engine.step(l, first.state(), Direction.RIGHT); // 1번을 얻는다
+        eq(1, second.state().keyProgress());
+        eq(1, second.collectedKeyOrder());
+        check(second.collectedKey());
+        check(!second.goalsJustUnlocked());
+
+        StepResult back = Engine.step(l, second.state(), Direction.LEFT);   // 돌아와 2번을 얻는다
+        eq(2, back.state().keyProgress());
+        eq(2, back.collectedKeyOrder());
+        check(back.goalsJustUnlocked());
+        check(back.state().goalsUnlocked(l));
+        // 이미 얻은 열쇠 칸은 다시 지나도 아무 일이 없다
+        StepResult again = Engine.step(l, back.state(), Direction.RIGHT);
+        eq(0, again.collectedKeyOrder());
+        eq(2, again.state().keyProgress());
+    }
+
+    static void sequenceLockedGoal() {
+        Level l = lv("########", "#----.-#", "#-$----#", "#@----1#", "########");
+        eq(1, l.keyCount);
+        int goal = at(l, 5, 1);
+        // 플레이어가 목표로 들어가려 하면 막힌다
+        GameState walk = seqState(l, 4, 1, new int[][]{{2, 2}}, 0);
+        isNull(Engine.step(l, walk, Direction.RIGHT));
+        BlockReason enter = Engine.whyBlocked(l, walk, Direction.RIGHT);
+        notNull(enter);
+        eq(BlockReason.Kind.LOCKED_GOAL, enter.kind());
+        eq(5, enter.x());
+        eq(1, enter.y());
+        eq(0, enter.z());
+        // 상자를 목표로 밀어 넣으려 해도 막힌다
+        GameState push = seqState(l, 3, 1, new int[][]{{4, 1}}, 0);
+        isNull(Engine.step(l, push, Direction.RIGHT));
+        BlockReason shove = Engine.whyBlocked(l, push, Direction.RIGHT);
+        notNull(shove);
+        eq(BlockReason.Kind.PUSH_LOCKED_GOAL, shove.kind());
+        eq(5, shove.x());
+        // 열쇠를 다 모으면 같은 입력이 통과한다
+        GameState open = seqState(l, 4, 1, new int[][]{{2, 2}}, 1);
+        notNull(Engine.step(l, open, Direction.RIGHT));
+        isNull(Engine.whyBlocked(l, open, Direction.RIGHT));
+        eq(goal, Engine.step(l, open, Direction.RIGHT).state().player);
+        GameState openPush = seqState(l, 3, 1, new int[][]{{4, 1}}, 1);
+        StepResult r = Engine.step(l, openPush, Direction.RIGHT);
+        notNull(r);
+        check(r.pushed());
+        check(r.cleared());
+        check(r.state().hasBlock(goal));
+        // 아직 열쇠가 남아 있으면 목표에 상자가 놓여도 클리어가 아니다
+        GameState early = seqState(l, 3, 1, new int[][]{{4, 1}}, 0);
+        check(!Engine.isCleared(l, early));
+
+        // 열쇠 레벨에서 무작위로 움직여도 step()이 null ⇔ whyBlocked()가 있음 이 유지된다
+        Level rand = lv("########", "#@-.-1-#", "#--$---#", "#------#", "########");
+        Random rnd = new Random(20261127L);
+        GameState st = rand.initial;
+        int blockedCount = 0, openCount = 0, lockedCount = 0;
+        for (int i = 0; i < 300; i++) {
+            for (Direction d : Direction.values()) {
+                BlockReason why = Engine.whyBlocked(rand, st, d);
+                boolean isBlocked = Engine.step(rand, st, d) == null;
+                eq(isBlocked, why != null, "step/whyBlocked 불일치 i=" + i + " " + d);
+                if (isBlocked) blockedCount++; else openCount++;
+                if (why != null && (why.kind() == BlockReason.Kind.LOCKED_GOAL
+                        || why.kind() == BlockReason.Kind.PUSH_LOCKED_GOAL)) lockedCount++;
+            }
+            StepResult go = Engine.step(rand, st, Direction.values()[rnd.nextInt(6)]);
+            if (go != null) st = go.state();
+        }
+        check(blockedCount > 0 && openCount > 0, "막힘 " + blockedCount + " / 통과 " + openCount);
+        check(lockedCount > 0, "잠긴 목표로 막히는 경우가 한 번도 없다");
+    }
+
+    static void sequenceUnlockAndClear() {
+        Level l = lv("########", "#@1---.#", "#-----$#", "#------#", "########");
+        eq(1, l.keyCount);
+        int goal = at(l, 6, 1);
+        // 첫 수로 1번 열쇠를 얻고, 상자를 목표까지 밀어 올린다
+        Session s = new Session(l, CFG);
+        notNull(s.move(Direction.RIGHT), "1번 열쇠");
+        eq(1, s.state().keyProgress());
+        check(s.state().goalsUnlocked(l));
+        notNull(s.move(Direction.DOWN));
+        notNull(s.move(Direction.DOWN));
+        notNull(s.move(Direction.RIGHT));
+        notNull(s.move(Direction.RIGHT));
+        notNull(s.move(Direction.RIGHT));
+        notNull(s.move(Direction.RIGHT));
+        StepResult last = s.move(Direction.UP);
+        notNull(last, "상자를 목표로 밀기");
+        check(last.pushed());
+        check(last.cleared());
+        check(s.isCleared());
+        eq(goal, last.blockTo());
+        eq(8, s.moves());
+    }
+
+    static void sequencePortalExit() {
+        // A(2,1) ↔ A(6,1). 짝 칸(6,1)에 상자가 있으면 플레이어가 나오며 오른쪽으로 밀어낸다.
+        Level l = lv("#########", "#@A---A.#", "####$####", "#---1---#", "#########");
+        eq(at(l, 6, 1), l.portalPartner(at(l, 2, 1)));
+        eq(1, l.keyCount);
+        // 밀려난 상자의 목표(7,1)가 잠겨 있으면 전송 자체가 막힌다
+        GameState jam = seqState(l, 1, 1, new int[][]{{6, 1}}, 0);
+        isNull(Engine.step(l, jam, Direction.RIGHT));
+        BlockReason r = Engine.whyBlocked(l, jam, Direction.RIGHT);
+        notNull(r);
+        eq(BlockReason.Kind.PUSH_LOCKED_GOAL, r.kind());
+        eq(7, r.x());
+        // 열쇠를 다 모으면 전송하며 상자를 목표로 밀어 클리어한다
+        GameState open = seqState(l, 1, 1, new int[][]{{6, 1}}, 1);
+        StepResult ok = Engine.step(l, open, Direction.RIGHT);
+        notNull(ok);
+        check(ok.playerTeleported());
+        check(ok.pushed());
+        check(ok.cleared());
+    }
+
+    static void sequenceAcrossLayers() {
+        Level l = lvz("########/#@12.---#/########",
+                "########/#---$---#/########",
+                "########/#-------#/########");
+        // layer0: 목표(4,1,0), 1·2번 열쇠(2,1)/(3,1). layer1: 상자(4,1,1). layer2: 빈 층
+        eq(2, l.keyCount);
+        int goal = at3(l, 4, 1, 0);
+        // 2번 열쇠 칸(3,1,0)에 서 있어도 1번을 얻기 전에는 목표(4,1,0)로 갈 수 없다
+        GameState atSecond = GameState.of(at3(l, 3, 1, 0), new int[]{at3(l, 4, 1, 1)}, new int[0], 0);
+        isNull(Engine.step(l, atSecond, Direction.RIGHT));
+        BlockReason locked = Engine.whyBlocked(l, atSecond, Direction.RIGHT);
+        notNull(locked);
+        eq(BlockReason.Kind.LOCKED_GOAL, locked.kind());
+        eq(4, locked.x());
+        eq(0, locked.z());
+        // 열쇠를 모두 얻고 위층으로 올라가 상자를 아래층 목표로 밀어 넣는다
+        Session s = new Session(l, CFG);
+        notNull(s.move(Direction.RIGHT));   // 1번 (2,1,0)
+        notNull(s.move(Direction.RIGHT));   // 2번 (3,1,0)
+        check(s.state().goalsUnlocked(l));
+        notNull(s.move(Direction.RIGHT));   // 목표 칸 통과 (4,1,0)
+        notNull(s.move(Direction.RIGHT));   // (5,1,0)
+        notNull(s.move(Direction.ABOVE));   // (5,1,1)
+        notNull(s.move(Direction.ABOVE));   // (5,1,2)
+        notNull(s.move(Direction.LEFT));    // (4,1,2)
+        StepResult done = s.move(Direction.BELOW);
+        notNull(done, "상자를 아래층 목표로 밀기");
+        check(done.pushed() && done.cleared());
+        eq(goal, done.blockTo());
+    }
+
+    static void sequenceUndoRedo() {
+        Level l = lv("########", "#@21.--#", "#--$---#", "########");
+        Session s = new Session(l, CFG);
+        GameState start = s.state();
+        notNull(s.move(Direction.RIGHT));           // 2번 (아직 아님)
+        eq(0, s.state().keyProgress());
+        notNull(s.move(Direction.RIGHT));           // 1번
+        eq(1, s.state().keyProgress());
+        notNull(s.move(Direction.LEFT));            // 2번
+        eq(2, s.state().keyProgress());
+        eq(3, s.moves());
+        check(s.undo());
+        eq(1, s.state().keyProgress());
+        check(s.undo());
+        eq(0, s.state().keyProgress());
+        check(s.undo());
+        eq(start, s.state());
+        check(s.redo());
+        eq(0, s.state().keyProgress());
+        check(s.redo());
+        eq(1, s.state().keyProgress());
+        s.reset();
+        eq(0, s.state().keyProgress());
+        eq(0, s.moves());
+        // 되돌리면 목표도 다시 잠긴다
+        check(!s.state().goalsUnlocked(l));
+    }
+
+    static void sequenceSolver() {
+        // 2번이 먼저 보이지만 1번을 얻은 뒤 돌아와 밟아야 한다: R R L R R
+        Level l = lv("#######", "#@21$.#", "#######");
+        Solver.Result r = Solver.solve(l, 100_000, 5000);
+        eq(Solver.Status.SOLVED, r.status());
+        eq(5, r.moves());
+        GameState s = l.initial;
+        for (char c : r.path().toCharArray()) s = play2(l, s, String.valueOf(c));
+        check(Engine.isCleared(l, s));
+        eq(2, s.keyProgress());
+        // 열쇠를 다 모으기 전에는 상자를 목표로 밀 수 없으므로 최적해가 열쇠를 먼저 밟는다
+        Level noKey = lv("#######", "#@--$.#", "#######");
+        eq(3, Solver.solve(noKey, 100_000, 5000).moves());
+    }
+
+    static void sequenceDifficulty() {
+        Level l = lv("########", "#@12-.$#", "########").withSolution(3, "RRR");
+        eq(2, l.keyCount);
+        eq(3, l.optimalMoves);
+        eq(2, l.keyOrder(at(l, 3, 1)), "withSolution이 순서 열쇠를 보존한다");
+        eq(2, (int) l.gimmicks.getOrDefault("sequence_key", 0));
+        double expected = CFG.weightOf("sequence_key") * 2 + CFG.alpha * 3 + CFG.beta * 1;
+        near(expected, Difficulty.score(l, CFG));
+        Level plain = lv("########", "#@---.$#", "########").withSolution(3, "RRR");
+        check(Difficulty.score(l, CFG) > Difficulty.score(plain, CFG), "열쇠가 있으면 난이도가 높다");
+        eq(0, plain.gimmicks.size());
+    }
+
+    static void sequenceState() {
+        Level l = lv("########", "#@12-.-#", "#-----$#", "########");
+        int[] blocks = new int[]{at(l, 6, 2)};
+        GameState zero = GameState.of(at(l, 1, 1), blocks, new int[0]);
+        GameState one = GameState.of(at(l, 1, 1), blocks, new int[0], 1);
+        check(!zero.equals(one), "진행도가 다르면 다른 상태다");
+        check(zero.hashCode() != one.hashCode(), "진행도가 hashCode에 반영된다");
+        eq(1, one.keyProgress());
+        check(one.toString().contains("keys=1"));
+        // 이동해도 진행도가 유지되고, withKeyProgress로만 바뀐다
+        GameState moved = one.withPlayer(at(l, 2, 1));
+        eq(1, moved.keyProgress());
+        GameState pushed = moved.withPush(at(l, 2, 1), at(l, 6, 2), at(l, 6, 1));
+        eq(1, pushed.keyProgress());
+        eq(0, pushed.withKeyProgress(0).keyProgress());
+        check(!zero.goalsUnlocked(l));
+        check(!one.goalsUnlocked(l), "2번 열쇠가 남아 있으면 목표는 아직 잠겨 있다");
+        check(one.withKeyProgress(2).goalsUnlocked(l));
+    }
+
+    static void sequenceEditorRoundTrip() throws Exception {
+        BlockCatalog catalog = new BlockCatalog(Path.of("config", "editor-blocks.properties"));
+        EditorDocument d = new EditorDocument(6, 4, 1, "SEQ", "순서 열쇠 맵");
+        d.set(1, 1, 0, new EditorDocument.Cell("empty", "player", Map.of(), Map.of()));
+        d.set(2, 1, 0, new EditorDocument.Cell("sequence_key", "", Map.of("order", "1"), Map.of()));
+        d.set(3, 1, 0, new EditorDocument.Cell("sequence_key", "", Map.of("order", "2"), Map.of()));
+        d.set(4, 1, 0, new EditorDocument.Cell("goal", "", Map.of(), Map.of()));
+        d.set(5, 2, 0, new EditorDocument.Cell("empty", "box", Map.of(), Map.of()));
+        // 에디터 프로젝트(.slevel)로 저장·복원해도 순서 열쇠 속성이 그대로 남는다
+        Path proj = Files.createTempFile("seq-editor-", ".slevel");
+        try {
+            EditorIO.save(proj, d);
+            check(EditorIO.load(proj).same(d), "프로젝트 왕복에서 순서 열쇠가 사라졌다");
+        } finally {
+            Files.deleteIfExists(proj);
+        }
+        String text = EditorIO.gameText(d, catalog);
+        Level l = LevelParser.parse("export", text.lines().toList());
+        eq(2, l.keyCount);
+        eq(1, l.keyOrder(l.idx(2, 1, 0)));
+        eq(2, l.keyOrder(l.idx(3, 1, 0)));
+        // 게임 TXT를 다시 불러오면 순서 열쇠가 order 속성으로 되돌아온다
+        Path file = Files.createTempFile("seq-editor-", ".txt");
+        try {
+            Files.writeString(file, text, StandardCharsets.UTF_8);
+            EditorDocument back = EditorIO.importGame(file);
+            eq("sequence_key", back.cell(2, 1, 0).terrain());
+            eq("1", back.cell(2, 1, 0).terrainProps().get("order"));
+            eq("2", back.cell(3, 1, 0).terrainProps().get("order"));
+            // 다시 내보내도 같은 레벨이 된다
+            Level again = LevelParser.parse("again", EditorIO.gameText(back, catalog).lines().toList());
+            eq(2, again.keyCount);
+            for (int i = 0; i < l.cellCount(); i++) eq(l.keyOrder(i), again.keyOrder(i));
+        } finally {
+            Files.deleteIfExists(file);
+        }
+        // 범위 밖 order는 게임 TXT로 옮길 수 없다
+        d.set(2, 1, 0, new EditorDocument.Cell("sequence_key", "", Map.of("order", "12"), Map.of()));
+        boolean rejected = false;
+        try {
+            EditorIO.gameText(d, catalog);
+        } catch (IOException expected) {
+            rejected = true;
+        }
+        check(rejected, "order 12는 1~9가 아니라 내보낼 수 없다");
     }
 
     static void blockReasonKinds() {

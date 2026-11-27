@@ -26,6 +26,10 @@ public final class Level {
     private final int[] portalPartner;
     /** 포탈 칸의 식별 문자('A', 'B'). 포탈이 없으면 null, 포탈이 아닌 칸은 0. */
     private final char[] portalChar;
+    /** 셀 인덱스별 순서 열쇠 번호(1..9). 열쇠가 아닌 칸은 0, 열쇠가 없는 레벨은 null. */
+    private final int[] keyOrder;
+    /** 이 레벨의 순서 열쇠 수. 0이면 목표가 처음부터 활성이다. */
+    public final int keyCount;
 
     public Level(String id, String name, int w, int d, int h, TileType[] tiles, GameState initial,
                  int optimalMoves, String solution, Double star3Ratio, Double star2Ratio,
@@ -43,15 +47,31 @@ public final class Level {
                  int optimalMoves, String solution, Double star3Ratio, Double star2Ratio,
                  Map<String, Integer> gimmicks, String source,
                  boolean pullAllowed, int[] portalPartner, char[] portalChar) {
+        this(id, name, w, d, h, tiles, initial, optimalMoves, solution, star3Ratio, star2Ratio,
+                gimmicks, source, pullAllowed, portalPartner, portalChar, null);
+    }
+
+    /**
+     * @param keyOrder 셀 인덱스별 순서 열쇠 번호(1..9, 열쇠가 아닌 칸은 0). 열쇠가 없으면 null.
+     *                 번호는 1부터 빠짐없이 이어져야 하며 중복될 수 없다.
+     */
+    public Level(String id, String name, int w, int d, int h, TileType[] tiles, GameState initial,
+                 int optimalMoves, String solution, Double star3Ratio, Double star2Ratio,
+                 Map<String, Integer> gimmicks, String source,
+                 boolean pullAllowed, int[] portalPartner, char[] portalChar, int[] keyOrder) {
         if ((portalPartner == null) != (portalChar == null)) {
             throw new IllegalArgumentException("portalPartner와 portalChar는 함께 주거나 함께 null이어야 한다.");
         }
         if (portalPartner != null && (portalPartner.length != tiles.length || portalChar.length != tiles.length)) {
             throw new IllegalArgumentException("포탈 배열 길이가 셀 수와 다르다.");
         }
+        if (keyOrder != null && keyOrder.length != tiles.length) {
+            throw new IllegalArgumentException("순서 열쇠 배열 길이가 셀 수와 다르다.");
+        }
         this.pullAllowed = pullAllowed;
         this.portalPartner = portalPartner == null ? null : portalPartner.clone();
         this.portalChar = portalChar == null ? null : portalChar.clone();
+        this.keyOrder = keyOrder == null ? null : keyOrder.clone();
         this.id = id;
         this.name = name;
         this.w = w;
@@ -63,8 +83,25 @@ public final class Level {
         this.solution = solution;
         this.star3Ratio = star3Ratio;
         this.star2Ratio = star2Ratio;
-        this.gimmicks = Map.copyOf(gimmicks);
         this.source = source;
+        int keys = 0;
+        if (this.keyOrder != null) {
+            boolean[] used = new boolean[10];
+            for (int o : this.keyOrder) {
+                if (o == 0) continue;
+                if (o < 1 || o > 9) throw new IllegalArgumentException("순서 열쇠 번호는 1~9여야 한다: " + o);
+                if (used[o]) throw new IllegalArgumentException("순서 열쇠 " + o + "번이 두 번 나왔다.");
+                used[o] = true;
+                keys++;
+            }
+            for (int o = 1; o <= keys; o++) {
+                if (!used[o]) throw new IllegalArgumentException("순서 열쇠 번호는 1부터 " + keys + "까지 이어져야 한다 (없는 번호 " + o + ").");
+            }
+        }
+        this.keyCount = keys;
+        Map<String, Integer> g = new java.util.LinkedHashMap<>(gimmicks);
+        if (keys > 0) g.put("sequence_key", keys);
+        this.gimmicks = Map.copyOf(g);
         int n = 0;
         for (TileType t : tiles) if (t == TileType.GOAL) n++;
         this.goals = new int[n];
@@ -106,6 +143,21 @@ public final class Level {
         return portalChar == null ? 0 : portalChar[idx];
     }
 
+    /** idx에 있는 순서 열쇠의 번호(1..9). 열쇠가 아니면 0. */
+    public int keyOrder(int idx) {
+        return keyOrder == null ? 0 : keyOrder[idx];
+    }
+
+    /** idx에 순서 열쇠가 있는가. */
+    public boolean isKey(int idx) {
+        return keyOrder != null && keyOrder[idx] > 0;
+    }
+
+    /** 이 레벨에 순서 열쇠가 있는가. 없으면 목표는 처음부터 활성이다. */
+    public boolean hasKeys() {
+        return keyCount > 0;
+    }
+
     /** idx에서 dir 방향 이웃 칸. 격자 밖이면 -1 (격자 밖은 고체로 취급한다). */
     public int neighbor(int idx, Direction dir) {
         int x = x(idx) + dir.dx;
@@ -138,6 +190,6 @@ public final class Level {
 
     public Level withSolution(int optimalMoves, String solution) {
         return new Level(id, name, w, d, h, tiles, initial, optimalMoves, solution,
-                star3Ratio, star2Ratio, gimmicks, source, pullAllowed, portalPartner, portalChar);
+                star3Ratio, star2Ratio, gimmicks, source, pullAllowed, portalPartner, portalChar, keyOrder);
     }
 }

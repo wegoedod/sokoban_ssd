@@ -226,11 +226,17 @@ final class IsoRenderer {
         layerGuides(g, lv, activeLayer);
         layerPlane(g, lv, editorLayer >= 0 ? editorLayer : pz);
 
-        // 2) 바닥 그림자 / 목표 표시 (높이 단서)
+        // 2) 바닥 그림자 / 목표 표시 (높이 단서). 잠긴 목표는 회색 테두리와 자물쇠로 구분한다.
+        boolean goalsOpen = st.goalsUnlocked(lv);
         g.setStroke(new BasicStroke(1.4f));
         for (int gi : lv.goals) {
-            g.setColor(alpha(Theme.GOAL, 0.55f));
+            Color gc = goalsOpen ? Theme.GOAL : Theme.GOAL_LOCKED;
+            g.setColor(alpha(gc, goalsOpen ? 0.55f : 0.62f));
             g.draw(square(lv.x(gi) + 0.12, lv.y(gi) + 0.12, 0.76, 0));
+            if (!goalsOpen) {
+                // 잠긴 목표: 흐린 회색 테두리 + 자물쇠. 열쇠를 모두 모으면 사라지고 금색 테두리만 남는다.
+                lockMark(g, lv.x(gi) + 0.5, lv.y(gi) + 0.5, 0);
+            }
         }
         for (int i = 0; i < st.blockCount(); i++) {
             int b = st.block(i);
@@ -255,7 +261,9 @@ final class IsoRenderer {
                 }
                 case GOAL -> {
                     if (!st.hasBlock(idx) && idx != pushedTo) {
-                        items.add(new Item(key, 0, () -> cube(g, x, y, z, Theme.GOAL, 0.22f)));
+                        final boolean open = goalsOpen;
+                        items.add(new Item(key, 0, () -> cube(g, x, y, z, open ? Theme.GOAL : Theme.GOAL_LOCKED,
+                                open ? 0.22f : 0.20f)));
                     }
                 }
                 // 새 타일: 행동은 엔진 PR에서 구현하고, 여기서는 어느 칸인지 알아볼 수 있게 투명 색 상자만 그린다
@@ -271,6 +279,19 @@ final class IsoRenderer {
                 }
                 default -> {
                 }
+            }
+        }
+        // 남아 있는 순서 열쇠: 다음 차례(밝게)와 뒷번호(흐리게)를 숫자로 구분해 그린다.
+        if (lv.hasKeys()) {
+            int progress = st.keyProgress();
+            for (int idx = 0; idx < lv.cellCount(); idx++) {
+                int order = lv.keyOrder(idx);
+                if (order <= 0 || order <= progress) continue;
+                final double x = lv.x(idx), y = lv.y(idx), z = lv.z(idx);
+                final int number = order;
+                final boolean next = order == progress + 1;
+                items.add(new Item(depth(x + 0.5, y + 0.5, layerBase(z) + 0.5) + 1e-4, 1,
+                        () -> keyToken(g, x, y, z, number, next)));
             }
         }
         for (int i = 0; i < st.blockCount(); i++) {
@@ -318,7 +339,7 @@ final class IsoRenderer {
         for (int gi : lv.goals) {
             if (st.hasBlock(gi)) continue;
             if (lv.z(gi) + 0.5 > layerZ) continue;
-            g.setColor(alpha(Theme.GOAL, 0.7f));
+            g.setColor(alpha(goalsOpen ? Theme.GOAL : Theme.GOAL_LOCKED, goalsOpen ? 0.7f : 0.5f));
             cubeEdges(g, lv.x(gi), lv.y(gi), lv.z(gi));
         }
         g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.35f));
@@ -426,6 +447,41 @@ final class IsoRenderer {
             g.setColor(alpha(Theme.TEXT_DIM, layer == currentLayer ? .95f : .65f));
             Gfx.right(g, (layer + 1) + "층", (int) mark[0] - 9, (int) mark[1] + 4);
         }
+    }
+
+    /** 잠긴 목표 칸 가운데의 작은 자물쇠(화면 기준 아이콘). 위치는 칸 중심 바닥 좌표. */
+    private void lockMark(Graphics2D g, double cx, double cy, double z) {
+        double[] c = pt(cx, cy, layerBase(z));
+        double w = Math.max(9, Math.min(20, S * scale * 0.34));
+        g.setColor(alpha(Theme.GOAL_LOCKED, 0.85f));
+        g.setStroke(new BasicStroke(2f));
+        g.draw(new java.awt.geom.Arc2D.Double(c[0] - w * 0.42, c[1] - w * 0.95, w * 0.84, w * 0.84,
+                0, 180, java.awt.geom.Arc2D.OPEN));
+        g.fill(new java.awt.geom.RoundRectangle2D.Double(c[0] - w * 0.62, c[1] - w * 0.52,
+                w * 1.24, w * 0.98, 3, 3));
+        g.setColor(alpha(Theme.PANEL_LOCK, 0.9f));
+        g.fill(new java.awt.geom.Ellipse2D.Double(c[0] - w * 0.10, c[1] - w * 0.24, w * 0.20, w * 0.20));
+    }
+
+    /**
+     * 순서 열쇠 표시: 칸 위 공중에 뜬 둥근 패에 번호를 쓴다. 다음에 먹을 열쇠는 밝게, 뒷번호는 흐리게.
+     * 먹은 열쇠는 게임 상태에서 빠지므로 여기까지 오지 않는다.
+     */
+    private void keyToken(Graphics2D g, double x, double y, double z, int order, boolean next) {
+        float la = layerAlpha(z);
+        if (la <= 0.06f) return;
+        double[] c = pt(x + .5, y + .5, layerBase(z) + .80);
+        int r = (int) Math.max(8, Math.min(17, S * scale * 0.30));
+        Color base = next ? Theme.KEY : Theme.KEY_DIM;
+        java.awt.geom.Ellipse2D disc = new java.awt.geom.Ellipse2D.Double(c[0] - r, c[1] - r, r * 2, r * 2);
+        g.setColor(alpha(base, (next ? 0.95f : 0.55f) * la));
+        g.fill(disc);
+        g.setStroke(new BasicStroke(next ? 2.2f : 1.2f));
+        g.setColor(alpha(next ? Theme.shade(base, 1.2) : Theme.shade(base, 0.85), la));
+        g.draw(disc);
+        g.setFont(Theme.font(Font.BOLD, Math.max(9f, r * 1.15f)));
+        g.setColor(alpha(next ? new Color(0x2b2340) : new Color(0x20222e), la));
+        Gfx.centered(g, Integer.toString(order), (int) Math.round(c[0]), (int) Math.round(c[1] + r * 0.38));
     }
 
     /** 칸 안쪽 바닥(그 층의 윗면)에 그리는 포탈 링. 투영을 거치므로 카메라 각도에 맞게 기울어진다. */

@@ -117,6 +117,9 @@ final class PlayScreen implements Screen {
             blocked = null;
             animStep = r;
             animElapsed = 0;
+            if (r.goalsJustUnlocked()) {
+                app.notify("순서 열쇠를 모두 모았습니다 · 목표 칸이 열렸습니다");
+            }
         } else {
             // 막혔다: 이동 횟수에는 포함되지 않는다. 무엇이 막았는지 찾아 화면에 알린다.
             blocked = app.settings.blockFlash() ? Engine.whyBlocked(level, session.state(), d) : null;
@@ -326,7 +329,8 @@ final class PlayScreen implements Screen {
             mouseMoves.layout(level, session.state(), renderer, cam, area);
             MouseMoves.Target hover = mouseMoves.pick(mouseX, mouseY);
             mouseMoves.paint(g, renderer, level, hover);
-            helpLine(g, w, mouseMoves.description(hover, level), 94);
+            if (blocked != null) helpLine(g, w, BlockText.text(level, session.state(), blocked), 94, Theme.BLOCKED);
+            else helpLine(g, w, mouseMoves.description(hover, level), 94);
         } else {
             mouseMoves.clear();
         }
@@ -357,6 +361,15 @@ final class PlayScreen implements Screen {
         g.setFont(Theme.font(Font.BOLD, 20f));
         g.setColor(Theme.TEXT);
         Gfx.right(g, "이동 " + session.moves() + (editorReturn != null ? "" : " / 최적 " + level.optimalMoves), w - 24, 40);
+        if (level.hasKeys()) {
+            int got = session.state().keyProgress();
+            boolean open = got >= level.keyCount;
+            g.setFont(Theme.font(Font.BOLD, 15f));
+            g.setColor(open ? Theme.GOOD : Theme.ACCENT);
+            g.drawString("열쇠 " + got + " / " + level.keyCount
+                    + (open ? " · 목표 열림" : " · 다음 " + (got + 1) + "번"), 24, 90);
+        }
+
         g.setFont(Theme.font(Font.PLAIN, 15f));
         g.setColor(Theme.TEXT_DIM);
         Gfx.right(g, flat
@@ -384,13 +397,17 @@ final class PlayScreen implements Screen {
 
     /** 하단 도움말 한 줄. 창이 좁으면 글자를 줄여 화면 밖으로 나가지 않게 한다. */
     private void helpLine(Graphics2D g, int w, String text, int y) {
+        helpLine(g, w, text, y, Theme.TEXT_DIM);
+    }
+
+    private void helpLine(Graphics2D g, int w, String text, int y, Color color) {
         float size = 14f;
         g.setFont(Theme.font(Font.PLAIN, size));
         while (size > 9f && g.getFontMetrics().stringWidth(text) > w - 48) {
             size -= 1f;
             g.setFont(Theme.font(Font.PLAIN, size));
         }
-        g.setColor(Theme.TEXT_DIM);
+        g.setColor(color);
         Gfx.centered(g, text, w / 2, y);
     }
 
