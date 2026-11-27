@@ -2,6 +2,7 @@ package sokoban.ui;
 
 import sokoban.config.GameConfig;
 import sokoban.level.LevelRepository;
+import sokoban.save.GameSettings;
 import sokoban.save.SaveStore;
 
 import javax.swing.JFrame;
@@ -27,6 +28,8 @@ public final class App {
     public final GameConfig config;
     public final LevelRepository repo;
     public final SaveStore save;
+    public final GameSettings settings;
+    private SettingsOverlay overlay;
     final JFrame frame = new JFrame("2.5D 소코반");
     private final Canvas canvas = new Canvas();
     private Screen screen;
@@ -39,6 +42,7 @@ public final class App {
         this.config = GameConfig.load(home.resolve("config").resolve("game.properties"));
         this.repo = LevelRepository.load(home.resolve("levels"), config);
         this.save = new SaveStore(SaveStore.defaultFile());
+        this.settings = new GameSettings(GameSettings.defaultFile());
         config.warnings.forEach(w -> System.err.println("[설정 경고] " + w));
         repo.errors.forEach(e -> System.err.println("[레벨 오류] " + e));
         if (save.loadWarning() != null) System.err.println("[저장 경고] " + save.loadWarning());
@@ -72,6 +76,83 @@ public final class App {
             }
         }).start();
         if (Boolean.getBoolean("sokoban.editor")) showLevelDesigner();
+    }
+
+    // ---------- 설정 창 (Esc) ----------
+
+    /**
+     * 설정 창을 연다. context는 그 화면에서만 할 수 있는 항목(계속·나가기 등)이고, 비어 있으면 "닫기"만 둔다.
+     * 열려 있는 동안 키·마우스 입력은 설정 창이 모두 가져간다.
+     */
+    void openSettings(java.util.List<SettingsOverlay.Row> context) {
+        var rows = new java.util.ArrayList<SettingsOverlay.Row>(context);
+        if (!rows.isEmpty()) rows.add(SettingsOverlay.separator());
+        rows.add(SettingsOverlay.Row.option("애니메이션 속도", () -> GameSettings.SPEED_NAMES[settings.speed()],
+                () -> { settings.cycleSpeed(); persistSettings(); }));
+        rows.add(SettingsOverlay.Row.option("막힌 칸 번쩍임", () -> settings.blockFlash() ? "켜짐" : "꺼짐",
+                () -> { settings.toggleBlockFlash(); persistSettings(); }));
+        rows.add(SettingsOverlay.Row.option("층 강조 기본값", () -> settings.layerFocusDefault() ? "켜짐" : "꺼짐",
+                () -> { settings.toggleLayerFocusDefault(); persistSettings(); }));
+        rows.add(SettingsOverlay.Row.option("창 크기", () -> maximized() ? "최대화" : "기본",
+                () -> frame.setExtendedState(maximized() ? JFrame.NORMAL : JFrame.MAXIMIZED_BOTH)));
+        rows.add(SettingsOverlay.Row.option("설정 기본값으로", () -> "실행",
+                () -> { settings.resetToDefaults(); persistSettings(); }));
+        rows.add(SettingsOverlay.Row.code("테스트 코드", this::applyTestCode));
+        rows.add(SettingsOverlay.separator());
+        rows.add(SettingsOverlay.Row.danger("진행 기록 초기화",
+                "모든 레벨의 클리어 기록(별·점수·최소 이동)이 삭제되고\n레벨 해금도 처음 상태로 돌아갑니다.\n이 작업은 되돌릴 수 없습니다. 계속할까요?",
+                this::resetProgress));
+        if (context.isEmpty()) rows.add(SettingsOverlay.Row.action("닫기", this::closeSettings));
+        overlay = new SettingsOverlay(rows, this::closeSettings);
+    }
+
+    void closeSettings() {
+        overlay = null;
+        canvas.requestFocusInWindow();
+    }
+
+    boolean settingsOpen() {
+        return overlay != null;
+    }
+
+    private boolean maximized() {
+        return (frame.getExtendedState() & JFrame.MAXIMIZED_BOTH) == JFrame.MAXIMIZED_BOTH;
+    }
+
+    private void persistSettings() {
+        try {
+            settings.save();
+        } catch (java.io.IOException e) {
+            notify("설정을 저장하지 못했습니다: " + e.getMessage());
+        }
+    }
+
+    private void resetProgress() {
+        save.clearAll();
+        try {
+            save.save();
+            notify("진행 기록을 초기화했습니다.");
+        } catch (java.io.IOException e) {
+            notify("기록 파일을 쓰지 못했습니다: " + e.getMessage());
+        }
+        closeSettings();
+        // 레벨 선택·플레이 도중이면 해금 상태가 바뀌었으니 안전한 화면으로 돌아간다.
+        if (!(screen instanceof MainMenuScreen)) showMainMenu();
+    }
+
+    /**
+     * 설정 창의 테스트 코드를 적용한다. 코드가 맞으면 모든 출고 레벨을 클리어 상태로 저장하고,
+     * 결과 메시지를 설정 창에 그대로 돌려준다(레벨 선택은 기록을 그릴 때마다 읽으므로 바로 별이 채워진다).
+     */
+    private SettingsOverlay.CodeResult applyTestCode(String code) {
+        try {
+            var result = sokoban.save.TestCode.apply(code, repo.levels, save);
+            return result.ok()
+                    ? SettingsOverlay.CodeResult.done(result.message())
+                    : SettingsOverlay.CodeResult.error(result.message());
+        } catch (java.io.IOException e) {
+            return SettingsOverlay.CodeResult.error("기록 파일을 쓰지 못했습니다: " + e.getMessage());
+        }
     }
 
     // ---------- 화면 전환 ----------
@@ -155,13 +236,15 @@ public final class App {
             addKeyListener(new KeyAdapter() {
                 @Override
                 public void keyPressed(KeyEvent e) {
-                    if (screen != null) screen.keyPressed(KeyNormalizer.normalize(e));
+                    if (overlay != null) overlay.keyPressed(KeyNormalizer.normalize(e));
+                    else if (screen != null) screen.keyPressed(KeyNormalizer.normalize(e));
                 }
             });
             MouseAdapter m = new MouseAdapter() {
                 @Override
                 public void mouseMoved(MouseEvent e) {
-                    if (screen != null) screen.mouseMoved(e.getX(), e.getY());
+                    if (overlay != null) overlay.mouseMoved(e.getX(), e.getY());
+                    else if (screen != null) screen.mouseMoved(e.getX(), e.getY());
                 }
 
                 @Override
@@ -171,24 +254,25 @@ public final class App {
 
                 @Override
                 public void mouseDragged(MouseEvent e) {
-                    if (screen != null) screen.mouseDragged(e.getX(), e.getY());
+                    if (overlay == null && screen != null) screen.mouseDragged(e.getX(), e.getY());
                 }
 
                 @Override
                 public void mousePressed(MouseEvent e) {
-                    if (screen != null) screen.mousePressed(e.getX(), e.getY());
+                    if (overlay == null && screen != null) screen.mousePressed(e.getX(), e.getY());
                 }
 
                 @Override
                 public void mouseReleased(MouseEvent e) {
-                    if (screen != null) screen.mouseReleased(e.getX(), e.getY());
+                    if (overlay == null && screen != null) screen.mouseReleased(e.getX(), e.getY());
                 }
 
                 @Override
                 public void mouseClicked(MouseEvent e) {
                     requestFocusInWindow();
-                    if (screen != null && SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) {
-                        screen.mouseClicked(e.getX(), e.getY());
+                    if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) {
+                        if (overlay != null) overlay.mouseClicked(e.getX(), e.getY());
+                        else if (screen != null) screen.mouseClicked(e.getX(), e.getY());
                     }
                 }
             };
@@ -205,6 +289,7 @@ public final class App {
             g.setPaint(new GradientPaint(0, 0, Theme.BG_TOP, 0, h, Theme.BG_BOTTOM));
             g.fillRect(0, 0, w, h);
             if (screen != null) screen.paint(g, w, h);
+            if (overlay != null) overlay.paint(g, w, h);
             if (notice != null) {
                 if (System.currentTimeMillis() > noticeUntil) {
                     notice = null;

@@ -41,6 +41,9 @@ final class PlanetArt {
         make("에리스", 0xdde8f4, Kind.ICE),
         make("안드로메다 관문", 0xa07ae0, Kind.RINGED),
         make("블랙홀", 0x000000, Kind.BLACKHOLE),
+        make("웜홀", 0x8a63d2, Kind.RINGED),
+        make("쌍성", 0xd08a4a, Kind.BANDED),
+        make("카론", 0xa8b2bd, Kind.MOON),
     };
 
     private static Planet make(String name, int rgb, Kind kind) {

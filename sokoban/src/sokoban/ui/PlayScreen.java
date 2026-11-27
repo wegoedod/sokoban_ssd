@@ -18,11 +18,10 @@ import java.io.IOException;
 
 /** 게임 플레이 화면: 격자 렌더링, HUD, 일시정지, 클리어 결과. */
 final class PlayScreen implements Screen {
-    private static final long ANIM_MS = 110;
     /** 막히면 막은 칸이 번쩍이는 시간(ms). */
     private static final long FLASH_MS = 520;
 
-    private enum Mode { PLAYING, PAUSED, CLEARED }
+    private enum Mode { PLAYING, CLEARED }
 
     private final App app;
     private final int levelIndex;
@@ -44,7 +43,6 @@ final class PlayScreen implements Screen {
     private BlockReason blocked;
     private long blockedElapsed;
 
-    private final MenuList pauseMenu;
     private MenuList clearMenu;
     private boolean hasNext;
     // 결과
@@ -65,8 +63,7 @@ final class PlayScreen implements Screen {
         this.levelIndex = levelIndex;
         this.level = level;
         this.editorReturn = editorReturn;
-        pauseMenu = editorReturn != null ? new MenuList("계속", "다시 시작", "편집으로 돌아가기")
-                : new MenuList("계속", "다시 시작", "레벨 선택", "메인 메뉴");
+        this.layerFocus = app.settings.layerFocusDefault();
         this.session = new Session(level, app.config);
         this.flat = level.h == 1;
         // 첫 3D 레벨(앞 레벨이 모두 한 층)이면 탑뷰에서 시작해 3D 시점으로 확장하는 연출을 건다.
@@ -98,7 +95,7 @@ final class PlayScreen implements Screen {
         }
         if (animStep == null) return;
         animElapsed += dt;
-        if (animElapsed >= ANIM_MS) {
+        if (animElapsed >= app.settings.animMs()) {
             animStep = null;
             if (session.isCleared()) {
                 onCleared();
@@ -120,9 +117,12 @@ final class PlayScreen implements Screen {
             blocked = null;
             animStep = r;
             animElapsed = 0;
+            if (r.goalOpened()) {
+                app.notify(r.openedGoalOrder() + "번 목표가 열렸습니다 · 상자를 넣으세요");
+            }
         } else {
             // 막혔다: 이동 횟수에는 포함되지 않는다. 무엇이 막았는지 찾아 화면에 알린다.
-            blocked = Engine.whyBlocked(level, session.state(), d);
+            blocked = app.settings.blockFlash() ? Engine.whyBlocked(level, session.state(), d) : null;
             blockedElapsed = 0;
         }
     }
@@ -161,13 +161,6 @@ final class PlayScreen implements Screen {
     public void keyPressed(KeyEvent e) {
         switch (mode) {
             case PLAYING -> playKey(e);
-            case PAUSED -> {
-                if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
-                    mode = Mode.PLAYING;
-                } else {
-                    pauseAction(pauseMenu.key(e));
-                }
-            }
             case CLEARED -> {
                 if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
                     if (editorReturn != null) editorReturn.run(); else app.showLevelSelect(levelIndex);
@@ -217,7 +210,7 @@ final class PlayScreen implements Screen {
             case KeyEvent.VK_R -> reset();
             case KeyEvent.VK_ESCAPE -> {
                 finishAnim();
-                if (mode == Mode.PLAYING) mode = Mode.PAUSED;
+                if (mode == Mode.PLAYING) openSettings();
             }
             default -> {
             }
@@ -242,8 +235,7 @@ final class PlayScreen implements Screen {
     public void mouseMoved(int x, int y) {
         mouseX = x;
         mouseY = y;
-        if (mode == Mode.PAUSED) pauseMenu.hover(x, y);
-        else if (mode == Mode.CLEARED) clearMenu.hover(x, y);
+        if (mode == Mode.CLEARED) clearMenu.hover(x, y);
     }
 
     @Override
@@ -253,8 +245,7 @@ final class PlayScreen implements Screen {
 
     @Override
     public void mouseClicked(int x, int y) {
-        if (mode == Mode.PAUSED) pauseAction(pauseMenu.click(x, y));
-        else if (mode == Mode.CLEARED) clearAction(clearMenu.click(x, y));
+        if (mode == Mode.CLEARED) clearAction(clearMenu.click(x, y));
         else if (canAcceptClick()) {
             // Rebuild at event time: resizing, undo and keyboard moves must not leave stale hit boxes.
             var size = app.canvasSize();
@@ -282,18 +273,26 @@ final class PlayScreen implements Screen {
         return new Rectangle(20, 112, Math.max(1, w - 40), Math.max(1, h - 178));
     }
 
-    private void pauseAction(int i) {
-        switch (i) {
-            case 0 -> mode = Mode.PLAYING;
-            case 1 -> {
-                mode = Mode.PLAYING;
-                reset();
-            }
-            case 2 -> { if (editorReturn != null) editorReturn.run(); else app.showLevelSelect(levelIndex); }
-            case 3 -> app.showMainMenu();
-            default -> {
-            }
+    /** Esc: 설정 창. 위쪽에 이 화면에서 할 수 있는 일(계속·처음부터·나가기)을 함께 보여 준다. */
+    private void openSettings() {
+        var rows = new java.util.ArrayList<SettingsOverlay.Row>();
+        rows.add(SettingsOverlay.Row.action("계속", app::closeSettings));
+        rows.add(SettingsOverlay.Row.danger("현재 레벨 초기화",
+                "이 레벨을 처음부터 다시 시작합니다.\n지금까지의 이동(" + session.moves() + "회)과 되돌리기 기록이 사라집니다.\n계속할까요?",
+                () -> {
+                    app.closeSettings();
+                    blocked = null;
+                    animStep = null;
+                    pending = null;
+                    session.reset();
+                }));
+        if (editorReturn != null) {
+            rows.add(SettingsOverlay.Row.action("편집으로 돌아가기", () -> { app.closeSettings(); editorReturn.run(); }));
+        } else {
+            rows.add(SettingsOverlay.Row.action("레벨 선택", () -> { app.closeSettings(); app.showLevelSelect(levelIndex); }));
+            rows.add(SettingsOverlay.Row.action("메인 메뉴", () -> { app.closeSettings(); app.showMainMenu(); }));
         }
+        app.openSettings(rows);
     }
 
     private void clearAction(int i) {
@@ -319,7 +318,7 @@ final class PlayScreen implements Screen {
     public void paint(Graphics2D g, int w, int h) {
         Rectangle area = boardArea(w, h);
         IsoRenderer.Anim anim = animStep == null ? null
-                : new IsoRenderer.Anim(animStep, Math.min(1.0, (double) animElapsed / ANIM_MS));
+                : new IsoRenderer.Anim(animStep, Math.min(1.0, (double) animElapsed / app.settings.animMs()));
         if (blocked != null && mode == Mode.PLAYING) {
             renderer.setFlash(blocked.x(), blocked.y(), blocked.z(), flashAlpha());
         } else {
@@ -330,12 +329,12 @@ final class PlayScreen implements Screen {
             mouseMoves.layout(level, session.state(), renderer, cam, area);
             MouseMoves.Target hover = mouseMoves.pick(mouseX, mouseY);
             mouseMoves.paint(g, renderer, level, hover);
-            helpLine(g, w, mouseMoves.description(hover, level), 94);
+            if (blocked != null) helpLine(g, w, BlockText.text(level, session.state(), blocked), 94, Theme.BLOCKED);
+            else helpLine(g, w, mouseMoves.description(hover, level), 94);
         } else {
             mouseMoves.clear();
         }
         hud(g, w, h);
-        if (mode == Mode.PAUSED) pauseOverlay(g, w, h);
         if (mode == Mode.CLEARED) clearOverlay(g, w, h);
     }
 
@@ -362,6 +361,14 @@ final class PlayScreen implements Screen {
         g.setFont(Theme.font(Font.BOLD, 20f));
         g.setColor(Theme.TEXT);
         Gfx.right(g, "이동 " + session.moves() + (editorReturn != null ? "" : " / 최적 " + level.optimalMoves), w - 24, 40);
+        if (level.hasSequenceGoals()) {
+            int done = session.state().filledSequenceGoals(level);
+            g.setFont(Theme.font(Font.BOLD, 15f));
+            g.setColor(done >= level.sequenceGoalCount ? Theme.GOOD : Theme.ACCENT);
+            g.drawString("순서 목표 " + done + " / " + level.sequenceGoalCount
+                    + (done >= level.sequenceGoalCount ? " · 모두 채움" : " · 다음 " + (done + 1) + "번"), 24, 90);
+        }
+
         g.setFont(Theme.font(Font.PLAIN, 15f));
         g.setColor(Theme.TEXT_DIM);
         Gfx.right(g, flat
@@ -389,27 +396,23 @@ final class PlayScreen implements Screen {
 
     /** 하단 도움말 한 줄. 창이 좁으면 글자를 줄여 화면 밖으로 나가지 않게 한다. */
     private void helpLine(Graphics2D g, int w, String text, int y) {
+        helpLine(g, w, text, y, Theme.TEXT_DIM);
+    }
+
+    private void helpLine(Graphics2D g, int w, String text, int y, Color color) {
         float size = 14f;
         g.setFont(Theme.font(Font.PLAIN, size));
         while (size > 9f && g.getFontMetrics().stringWidth(text) > w - 48) {
             size -= 1f;
             g.setFont(Theme.font(Font.PLAIN, size));
         }
-        g.setColor(Theme.TEXT_DIM);
+        g.setColor(color);
         Gfx.centered(g, text, w / 2, y);
     }
 
     private void dim(Graphics2D g, int w, int h) {
         g.setColor(new Color(0, 0, 0, 160));
         g.fillRect(0, 0, w, h);
-    }
-
-    private void pauseOverlay(Graphics2D g, int w, int h) {
-        dim(g, w, h);
-        g.setColor(Theme.TEXT);
-        g.setFont(Theme.font(Font.BOLD, 36f));
-        Gfx.centered(g, "일시정지", w / 2, h / 2 - 150);
-        pauseMenu.paint(g, w / 2, h / 2 - 110, 260, 50, 12);
     }
 
     private void clearOverlay(Graphics2D g, int w, int h) {

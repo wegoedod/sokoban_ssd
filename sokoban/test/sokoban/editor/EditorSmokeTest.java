@@ -48,6 +48,12 @@ public final class EditorSmokeTest {
             for(int i=0;i<old.cellCount();i++)check(old.tile(i)==next.tile(i)&&old.portalPartner(i)==next.portalPartner(i),"existing terrain: "+file);
             count++;
         }}
-        System.out.println("Editor checks passed: composition, unique player, snapshots, XML properties, safe export, 600 projected cell picks, "+count+" existing levels.");
+        // 순서 목표 예제: 게임 TXT를 불러와 다시 내보내도 목표 3개와 번호가 그대로다
+        EditorDocument demo=EditorIO.importGame(Path.of("examples","sequence-goal-demo.txt"));
+        var seq=LevelParser.parse("demo",EditorIO.gameText(demo,catalog).lines().toList());
+        check(seq.sequenceGoalCount==3,"sequence goal example keeps 3 numbered goals");
+        check(seq.goalOrder(seq.idx(1,1,1))==1&&seq.goalOrder(seq.idx(3,1,1))==2&&seq.goalOrder(seq.idx(5,1,1))==3,"goal order kept");
+        check(seq.tile(seq.idx(1,1,1))==sokoban.core.TileType.GOAL,"sequence goal is a real goal tile");
+        System.out.println("Editor checks passed: composition, unique player, snapshots, XML properties, safe export, 600 projected cell picks, "+count+" existing levels, sequence goal demo.");
     }
 }

@@ -134,7 +134,7 @@ public final class LevelDesigner {
     private void page(int delta){int pages=(catalog.all().size()+8)/9;page=Math.floorMod(page+delta,pages);hotbar.repaint();pageLabel.setText((page+1)+" / "+pages);}
     private void chooseFloor(int z){floor=Math.max(0,Math.min(doc.floors-1,z));selectedX=selectedY=-1;refresh();}
     private void refresh(){
-        floor=Math.max(0,Math.min(floor,doc.floors-1));frame.setTitle((doc.same(saved)?"":"● ")+doc.name+" — 소코반 레벨 디자이너");
+        floor=Math.max(0,Math.min(floor,doc.floors-1));frame.setTitle((doc.same(saved)?"":"● ")+doc.name+" — AstroDeck 레벨 디자이너");
         boardTitle.setForeground(TEXT);brushTitle.setForeground(TEXT);boardTitle.setText((floor+1)+"층 · 3D 편집");counter.setText(doc.width+" × "+doc.depth+" × "+doc.floors+"층");
         floorsPanel.removeAll();for(int z=doc.floors-1;z>=0;z--){final int layer=z;JButton b=new JButton((z+1)+"층     "+doc.count(z)+"개");b.setFont(font(Font.BOLD,16));b.setForeground(z==floor?TEXT:DIM);b.setBackground(z==floor?new Color(0x494266):BG);b.setFocusPainted(false);b.setBorder(new CompoundBorder(new LineBorder(z==floor?ACCENT:LINE),new EmptyBorder(19,12,19,12)));b.setMaximumSize(new Dimension(180,62));b.addActionListener(e->chooseFloor(layer));floorsPanel.add(b);floorsPanel.add(Box.createVerticalStrut(9));}
         floorsPanel.revalidate();floorsPanel.repaint();board.repaint();preview.repaint();select(brush);

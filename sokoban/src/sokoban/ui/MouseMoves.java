@@ -1,5 +1,6 @@
 package sokoban.ui;
 
+import sokoban.core.BlockReason;
 import sokoban.core.Direction;
 import sokoban.core.Engine;
 import sokoban.core.GameState;
@@ -16,7 +17,7 @@ import java.util.List;
 
 /** Click one of the six adjacent cells. No path finding or changes to game rules. */
 final class MouseMoves {
-    record Target(Direction direction, int cell, StepResult preview,
+    record Target(Direction direction, int cell, StepResult preview, String blockedText,
                   IsoRenderer.CellProjection projection) {
         boolean available() { return preview != null; }
     }
@@ -40,8 +41,10 @@ final class MouseMoves {
             int cell = level.neighbor(state.player, direction);
             var projection = renderer.projectCell(px + direction.dx, py + direction.dy, pz + direction.dz, flat);
             StepResult result = Engine.step(level, state, direction);
+            BlockReason reason = result == null ? Engine.whyBlocked(level, state, direction) : null;
+            String blockedText = reason == null ? null : BlockText.text(level, state, reason);
             // Keep blocked/outside neighbours in picking, so clicking them cannot select a cell behind them.
-            targets.add(new Target(direction, cell, result, projection));
+            targets.add(new Target(direction, cell, result, blockedText, projection));
         }
     }
 
@@ -93,7 +96,9 @@ final class MouseMoves {
 
     String description(Target target, Level level) {
         if (target == null) return "인접 칸에 커서를 올려 미리보기 · 클릭으로 이동/밀기";
-        if (!target.available()) return "막힌 칸 · 이동할 수 없습니다";
+        if (!target.available()) {
+            return target.blockedText() == null ? "막힌 칸 · 이동할 수 없습니다" : "막힌 칸 · " + target.blockedText();
+        }
         if (target.preview().blockVanished()) return "클릭: 상자로 구멍 메우기 · 상자는 소멸합니다";
         if (target.preview().pushed()) return "클릭: 상자 밀기 · 점선은 상자 도착 칸 (" + (level.z(target.preview().blockTo()) + 1) + "층)";
         return "클릭: " + (level.z(target.cell()) + 1) + "층의 이 칸으로 이동";

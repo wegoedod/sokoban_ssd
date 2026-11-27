@@ -1,5 +1,6 @@
 package sokoban.ui;
 
+import sokoban.core.GameState;
 import sokoban.core.Level;
 import sokoban.level.LevelFormatException;
 import sokoban.level.LevelParser;
@@ -39,13 +40,17 @@ public final class RenderTest {
     }
 
     private static BufferedImage render(Level lv, boolean layerFocus) {
+        return render(lv, lv.initial, layerFocus);
+    }
+
+    private static BufferedImage render(Level lv, GameState st, boolean layerFocus) {
         BufferedImage img = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = img.createGraphics();
         g.setColor(new Color(BG));
         g.fillRect(0, 0, W, H);
         Camera cam = new Camera();
         if (lv.h == 1) cam.snapToTopView(); else cam.snapToDefaultView();
-        new IsoRenderer().render(g, lv, lv.initial, null, new Rectangle(20, 20, W - 40, H - 40), cam, layerFocus);
+        new IsoRenderer().render(g, lv, st, null, new Rectangle(20, 20, W - 40, H - 40), cam, layerFocus);
         g.dispose();
         return img;
     }
@@ -70,6 +75,33 @@ public final class RenderTest {
         int diff = differingPixels(off, render(lv, true));
         check(diff > 300, "맨 아래층에서 층 강조가 위층을 흐리게 하지 않는다: " + diff);
         check(differingPixels(off, render(lv, false)) == 0, "강조를 끄면 처음과 같아야 한다");
+    }
+
+    /** 순서 목표: 잠긴 목표(자물쇠)와 채운 목표가 화면에서 구분되고, 번호가 그려진다. */
+    public static void sequenceGoalRendering() {
+        // 목표 1·2(번호)와 상자 2개. 처음에는 1번만 열려 있고 2번은 잠겨 있다.
+        Level lv = level("---------,-@1-2----,--$----$-,---------");
+        check(lv.sequenceGoalCount == 2, "순서 목표 2개");
+        check(!lv.initial.goalUnlocked(lv, lv.idx(4, 1, 0)), "2번 목표는 처음에 잠겨 있다");
+        // 1번 목표에 상자를 넣으면 2번이 열린다: 화면이 분명히 달라져야 한다
+        GameState filled = GameState.of(lv.initial.player,
+                new int[]{lv.idx(2, 1, 0), lv.idx(7, 2, 0)}, new int[0]);
+        int lockedVsFilled = differingPixels(render(lv, false), render(lv, filled, false));
+        check(lockedVsFilled > 300, "잠긴 목표와 채운 목표가 화면에서 구분되지 않는다: " + lockedVsFilled);
+        // 번호 없는 목표만 있는 같은 맵과도 구분된다(번호 패가 그려진다)
+        Level plain = level("---------,-@--.----,--$----$-,---------");
+        int numbered = differingPixels(render(plain, false), render(lv, false));
+        check(numbered > 100, "순서 목표 번호·자물쇠가 그려지지 않는다: " + numbered);
+        // 그린 뒤 Graphics 상태는 원래대로다(회귀)
+        BufferedImage img = new BufferedImage(200, 120, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = img.createGraphics();
+        var old = g.getTransform();
+        var clip = g.getClip();
+        Camera cam = new Camera();
+        cam.snapToTopView();
+        new IsoRenderer().render(g, lv, lv.initial, null, new Rectangle(10, 10, 180, 100), cam, false);
+        check(g.getTransform().equals(old) && java.util.Objects.equals(g.getClip(), clip), "그린 뒤 변환·클립이 바뀌었다");
+        g.dispose();
     }
 
     /** 한 층짜리 레벨은 흐려질 층이 없어 층 강조가 화면을 바꾸지 않는다(HUD 배지도 2D에서는 안 띄운다). */
