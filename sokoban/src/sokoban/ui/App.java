@@ -97,6 +97,7 @@ public final class App {
                 () -> frame.setExtendedState(maximized() ? JFrame.NORMAL : JFrame.MAXIMIZED_BOTH)));
         rows.add(SettingsOverlay.Row.option("설정 기본값으로", () -> "실행",
                 () -> { settings.resetToDefaults(); persistSettings(); }));
+        rows.add(SettingsOverlay.Row.code("테스트 코드", this::applyTestCode));
         rows.add(SettingsOverlay.separator());
         rows.add(SettingsOverlay.Row.danger("진행 기록 초기화",
                 "모든 레벨의 클리어 기록(별·점수·최소 이동)이 삭제되고\n레벨 해금도 처음 상태로 돌아갑니다.\n이 작업은 되돌릴 수 없습니다. 계속할까요?",
@@ -137,6 +138,21 @@ public final class App {
         closeSettings();
         // 레벨 선택·플레이 도중이면 해금 상태가 바뀌었으니 안전한 화면으로 돌아간다.
         if (!(screen instanceof MainMenuScreen)) showMainMenu();
+    }
+
+    /**
+     * 설정 창의 테스트 코드를 적용한다. 코드가 맞으면 모든 출고 레벨을 클리어 상태로 저장하고,
+     * 결과 메시지를 설정 창에 그대로 돌려준다(레벨 선택은 기록을 그릴 때마다 읽으므로 바로 별이 채워진다).
+     */
+    private SettingsOverlay.CodeResult applyTestCode(String code) {
+        try {
+            var result = sokoban.save.TestCode.apply(code, repo.levels, save);
+            return result.ok()
+                    ? SettingsOverlay.CodeResult.done(result.message())
+                    : SettingsOverlay.CodeResult.error(result.message());
+        } catch (java.io.IOException e) {
+            return SettingsOverlay.CodeResult.error("기록 파일을 쓰지 못했습니다: " + e.getMessage());
+        }
     }
 
     // ---------- 화면 전환 ----------

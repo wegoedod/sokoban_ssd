@@ -1,7 +1,11 @@
 package sokoban.ui;
 
+import sokoban.config.GameConfig;
+import sokoban.core.Level;
+import sokoban.level.LevelRepository;
 import sokoban.save.GameSettings;
 import sokoban.save.SaveStore;
+import sokoban.save.TestCode;
 
 import java.awt.Component;
 import java.awt.event.KeyEvent;
@@ -10,7 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-/** Esc 설정 창: 확인창 규칙(기본은 취소), 설정 저장·복원, 기록 초기화. */
+/** Esc 설정 창: 확인창 규칙(기본은 취소), 설정 저장·복원, 기록 초기화, 테스트 코드 입력. */
 public final class SettingsTest {
     private SettingsTest() {
     }
@@ -112,6 +116,136 @@ public final class SettingsTest {
         st.save();
         SaveStore again = new SaveStore(f);
         check(!again.cleared("L01") && !again.cleared("L02"), "파일에서도 지워짐");
+        Files.deleteIfExists(f);
+    }
+
+    // ---------- 테스트 코드 (설정 창) ----------
+
+    /** 설정 창의 코드 항목 하나만 있는 오버레이. 입력한 코드는 실제 TestCode로 넘겨 저장까지 확인한다. */
+    private static SettingsOverlay codeOverlay(SaveStore save, List<Level> levels) {
+        return new SettingsOverlay(List.of(
+                SettingsOverlay.Row.action("계속", () -> { }),
+                SettingsOverlay.separator(),
+                SettingsOverlay.Row.code("테스트 코드", code -> {
+                    try {
+                        TestCode.Result r = TestCode.apply(code, levels, save);
+                        return r.ok()
+                                ? SettingsOverlay.CodeResult.done(r.message())
+                                : SettingsOverlay.CodeResult.error(r.message());
+                    } catch (java.io.IOException e) {
+                        return SettingsOverlay.CodeResult.error("기록 파일을 쓰지 못했습니다: " + e.getMessage());
+                    }
+                })), () -> { });
+    }
+
+    private static List<Level> shippedLevels() {
+        LevelRepository repo = LevelRepository.load(Path.of("levels"), GameConfig.defaults());
+        if (!repo.errors.isEmpty()) throw new AssertionError("레벨 오류: " + repo.errors);
+        return repo.levels;
+    }
+
+    /** 코드 항목으로 내려가 Enter로 입력판을 연다(선택은 첫 행에서 시작한다). */
+    private static void openCodeEntry(SettingsOverlay o) {
+        o.keyPressed(key(KeyEvent.VK_DOWN));
+        o.keyPressed(key(KeyEvent.VK_ENTER));
+    }
+
+    private static void typeCode(SettingsOverlay o, String digits) {
+        for (char c : digits.toCharArray()) o.keyPressed(key(KeyEvent.VK_0 + (c - '0')));
+    }
+
+    /** 123456을 넣으면 21개 레벨 모두가 최적 기록(★★★·1000점·최적 이동)으로 저장된다. */
+    public static void testCodeCompletesEveryLevel() throws Exception {
+        Path f = Files.createTempFile("astro", ".properties");
+        List<Level> levels = shippedLevels();
+        check(levels.size() == 21, "출고 레벨 21개: " + levels.size());
+        SaveStore save = new SaveStore(f);
+        SettingsOverlay o = codeOverlay(save, levels);
+        openCodeEntry(o);
+        check(o.isTypingCode(), "Enter로 코드 입력판이 열린다");
+        typeCode(o, TestCode.CODE);
+        check(TestCode.CODE.equals(o.typedCode()), "입력한 코드: " + o.typedCode());
+        o.keyPressed(key(KeyEvent.VK_ENTER));
+        check(!o.isTypingCode(), "확인하면 입력판이 닫힌다");
+        check(o.statusOk() && o.statusMessage().contains("모든 레벨 완료 처리"), "성공 안내: " + o.statusMessage());
+        for (Level l : levels) {
+            SaveStore.Record r = save.get(l.id);
+            check(r.bestStars() == 3, l.id + " 별 3개");
+            check(r.bestMoves() == l.optimalMoves, l.id + " 최적 이동 " + r.bestMoves());
+            check(r.bestScore() == 1000, l.id + " 1000점: " + r.bestScore());
+        }
+        SaveStore reloaded = new SaveStore(f);
+        for (Level l : levels) {
+            check(reloaded.cleared(l.id) && reloaded.get(l.id).bestStars() == 3, l.id + " 파일에도 저장됨");
+        }
+        Files.deleteIfExists(f);
+    }
+
+    /** 잘못된 코드는 아무 기록도 바꾸지 않고 오류만 보여 준다. */
+    public static void testCodeRejectsWrongCode() throws Exception {
+        Path f = Files.createTempFile("astro", ".properties");
+        List<Level> levels = shippedLevels();
+        SaveStore save = new SaveStore(f);
+        save.update(levels.get(0).id, 300, 1, 40);        // 이미 있던 기록
+        SettingsOverlay o = codeOverlay(save, levels);
+        openCodeEntry(o);
+        typeCode(o, "654321");
+        o.keyPressed(key(KeyEvent.VK_ENTER));
+        check(!o.isTypingCode() && !o.statusOk(), "오답은 실패로 표시된다");
+        check(o.statusMessage().contains("올바르지 않은 코드"), "안내: " + o.statusMessage());
+        check(save.get(levels.get(0).id).bestStars() == 1 && save.get(levels.get(0).id).bestMoves() == 40,
+                "기존 기록은 그대로");
+        for (Level l : levels.subList(1, levels.size())) check(!save.cleared(l.id), l.id + " 변경 없음");
+        check(!new SaveStore(f).cleared(levels.get(1).id), "파일도 그대로");
+        Files.deleteIfExists(f);
+    }
+
+    /** 입력판: Backspace·Esc 취소·자릿수 제한. 취소는 기록을 건드리지 않는다. */
+    public static void testCodeTypingKeys() throws Exception {
+        Path f = Files.createTempFile("astro", ".properties");
+        List<Level> levels = shippedLevels();
+        SaveStore save = new SaveStore(f);
+        SettingsOverlay o = codeOverlay(save, levels);
+        openCodeEntry(o);
+        typeCode(o, "123");
+        o.keyPressed(key(KeyEvent.VK_BACK_SPACE));
+        check("12".equals(o.typedCode()), "Backspace: " + o.typedCode());
+        o.keyPressed(key(KeyEvent.VK_ESCAPE));
+        check(!o.isTypingCode(), "Esc는 입력판만 닫는다");
+        check(o.statusMessage() == null, "취소는 결과 메시지를 남기지 않는다");
+        check(!save.cleared(levels.get(0).id), "취소는 기록을 건드리지 않는다");
+        o.keyPressed(key(KeyEvent.VK_ENTER));           // 같은 항목에서 다시 열기
+        check(o.isTypingCode() && o.typedCode().isEmpty(), "다시 열면 빈 입력란에서 시작");
+        typeCode(o, "12345678");
+        check(o.typedCode().equals(TestCode.CODE), "자릿수를 넘는 입력은 받지 않는다: " + o.typedCode());
+        o.keyPressed(key(KeyEvent.VK_ESCAPE));
+        Files.deleteIfExists(f);
+    }
+
+    /** 마우스로도 입력판을 열고, 취소·확인 버튼이 같은 일을 한다. */
+    public static void mouseTestCodeEntry() throws Exception {
+        Path f = Files.createTempFile("astro", ".properties");
+        List<Level> levels = shippedLevels();
+        SaveStore save = new SaveStore(f);
+        SettingsOverlay o = codeOverlay(save, levels);
+        BufferedImage img = new BufferedImage(900, 700, BufferedImage.TYPE_INT_RGB);
+        var g = img.createGraphics();
+        o.paint(g, 900, 700);
+        var row = o.rowBox(2);                          // 코드 항목
+        o.mouseClicked(row.x + row.width / 2, row.y + row.height / 2);
+        check(o.isTypingCode(), "코드 항목을 클릭하면 입력판이 열린다");
+        o.paint(g, 900, 700);
+        var cancel = o.codeBox(0);
+        o.mouseClicked(cancel.x + 5, cancel.y + 5);
+        check(!o.isTypingCode(), "취소 버튼은 입력판만 닫는다");
+        o.mouseClicked(row.x + 5, row.y + 5);
+        typeCode(o, TestCode.CODE);
+        o.paint(g, 900, 700);
+        var ok = o.codeBox(1);
+        o.mouseClicked(ok.x + 5, ok.y + 5);
+        g.dispose();
+        check(!o.isTypingCode() && o.statusOk(), "확인 버튼으로도 적용된다");
+        check(save.get(levels.get(0).id).bestStars() == 3, "적용됨");
         Files.deleteIfExists(f);
     }
 }

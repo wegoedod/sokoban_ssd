@@ -1,5 +1,7 @@
 package sokoban.save;
 
+import sokoban.core.Scoring;
+
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
@@ -11,6 +13,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+
 
 /**
  * 레벨별 기록 저장 (FR-4.6, FR-7.1, FR-7.2, UC-15).
@@ -89,6 +92,17 @@ public final class SaveStore {
         if (now.equals(old)) return false;
         records.put(levelId, now);
         return true;
+    }
+
+    /**
+     * 레벨을 최적 플레이 기록으로 클리어 처리한다: ★★★·1000점·최적 이동 수.
+     * 최적 이동에 되돌리기 0회면 점수 산식이 언제나 1000점이다. 설정 창의 테스트 코드가 쓴다.
+     *
+     * @return 기록이 바뀌었으면 true
+     */
+    public boolean markOptimal(String levelId, int optimalMoves) {
+        int moves = Math.max(1, optimalMoves);
+        return update(levelId, Scoring.score(moves, moves, 0, 0), 3, moves);
     }
 
     /** 모든 레벨 기록을 지운다(저장은 save()). 설정 창의 "진행 기록 초기화"가 쓴다. */

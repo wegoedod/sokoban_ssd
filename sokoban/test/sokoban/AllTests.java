@@ -105,6 +105,10 @@ public final class AllTests {
         test("설정 창: 마우스로도 확인창을 거친다", sokoban.ui.SettingsTest::mouseConfirmFlow);
         test("설정: 저장·복원·손상 파일은 기본값", sokoban.ui.SettingsTest::settingsPersist);
         test("설정: 진행 기록 초기화가 파일까지 지운다", sokoban.ui.SettingsTest::clearProgress);
+        test("설정 창: 테스트 코드 123456이 모든 레벨을 완료 처리", sokoban.ui.SettingsTest::testCodeCompletesEveryLevel);
+        test("설정 창: 틀린 테스트 코드는 기록을 바꾸지 않는다", sokoban.ui.SettingsTest::testCodeRejectsWrongCode);
+        test("설정 창: 코드 입력판의 Backspace·Esc·자릿수 제한", sokoban.ui.SettingsTest::testCodeTypingKeys);
+        test("설정 창: 마우스로도 테스트 코드를 입력·적용", sokoban.ui.SettingsTest::mouseTestCodeEntry);
         test("우주 지도: 행성이 위·아래 지그재그, 간격 일정", sokoban.ui.SpaceMapTest::zigzagLayout);
         test("우주 지도: 로켓은 목표까지 한 행성씩만 이동", sokoban.ui.SpaceMapTest::rocketMovesOneNodeAtATime);
         test("우주 지도: 이동 중 목표가 바뀌면 되돌아 뜀", sokoban.ui.SpaceMapTest::rocketReversesMidHop);
