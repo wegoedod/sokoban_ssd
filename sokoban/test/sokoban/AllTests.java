@@ -775,7 +775,7 @@ public final class AllTests {
         GameConfig cfg = GameConfig.load(Path.of("config", "game.properties"));
         LevelRepository repo = LevelRepository.load(Path.of("levels"), cfg);
         check(repo.errors.isEmpty(), "레벨 오류: " + repo.errors);
-        eq(20, repo.levels.size(), "출고 레벨 수");
+        eq(21, repo.levels.size(), "출고 레벨 수");
         int first3D = -1;
         for (int i = 0; i < repo.levels.size(); i++) {
             Level l = repo.levels.get(i);
