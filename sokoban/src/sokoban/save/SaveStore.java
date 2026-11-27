@@ -91,6 +91,11 @@ public final class SaveStore {
         return true;
     }
 
+    /** 모든 레벨 기록을 지운다(저장은 save()). 설정 창의 "진행 기록 초기화"가 쓴다. */
+    public void clearAll() {
+        records.clear();
+    }
+
     /** 임시 파일에 쓴 뒤 교체한다. 실패하면 예외 (게임 진행은 막지 않는다). */
     public void save() throws IOException {
         Properties p = new Properties();

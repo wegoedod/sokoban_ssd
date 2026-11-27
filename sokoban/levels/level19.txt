@@ -1,0 +1,19 @@
+id: L19
+name: 차원의 문
+optimalMoves: 33
+solution: DTDRDLLBULTRLDRDLRTDRDLLULDDDLDRR
+layer 0
+--#-
+--##
+---#
+-#--
+layer 1
+-A@-
+.---
+----
+---.
+layer 2
+----
+##--
+-$$-
+A---

@@ -23,6 +23,10 @@ public record BlockReason(Kind kind, int x, int y, int z) {
         /** 상자를 밀려는데 상자 뒤가 격자 밖이다. */
         PUSH_EDGE,
         /** 상자를 밀려는데 상자 뒤에 다른 상자가 있다(연쇄 밀기 없음). */
-        PUSH_BOX
+        PUSH_BOX,
+        /** 포탈에 들어가려는데 짝 포탈 칸에 상자가 있어 나갈 수 없다. 막은 칸은 짝 포탈 칸이다. */
+        PORTAL,
+        /** 상자를 포탈로 밀려는데 짝 포탈 칸이 막혀 있다. 막은 칸은 짝 포탈 칸이다. */
+        PUSH_PORTAL
     }
 }

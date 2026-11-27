@@ -25,7 +25,7 @@ public enum TileType {
     ICE,
     /**
      * 포탈. 짝이 되는 칸은 {@link Level#portalPartner(int)}로 찾는다(레벨 디자인 M-04).
-     * TODO: 전송 처리는 엔진 PR에서 구현한다. 지금은 빈 칸과 똑같이 동작한다.
+     * 플레이어나 상자가 들어가면 짝 포탈 칸으로 전송된다. 짝 칸이 막혀 있으면 들어갈 수 없다(규칙은 {@link Engine}).
      */
     PORTAL
 }

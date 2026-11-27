@@ -97,6 +97,10 @@ public final class AllTests {
         test("렌더: 맨 위층에서도 층 강조가 화면을 바꿈", sokoban.ui.RenderTest::layerFocusChangesEvenOnTopLayer);
         test("렌더: 층 강조는 위층을 흐리게 하고 끄면 복원", sokoban.ui.RenderTest::layerFocusDimsUpperLayersAndRestores);
         test("렌더: 2D 레벨은 층 강조 영향 없음", sokoban.ui.RenderTest::layerFocusDoesNothingOnFlatLevel);
+        test("설정 창: 위험 항목은 확인창을 거치고 기본은 취소", sokoban.ui.SettingsTest::dangerNeedsConfirm);
+        test("설정 창: 마우스로도 확인창을 거친다", sokoban.ui.SettingsTest::mouseConfirmFlow);
+        test("설정: 저장·복원·손상 파일은 기본값", sokoban.ui.SettingsTest::settingsPersist);
+        test("설정: 진행 기록 초기화가 파일까지 지운다", sokoban.ui.SettingsTest::clearProgress);
         test("우주 지도: 행성이 위·아래 지그재그, 간격 일정", sokoban.ui.SpaceMapTest::zigzagLayout);
         test("우주 지도: 로켓은 목표까지 한 행성씩만 이동", sokoban.ui.SpaceMapTest::rocketMovesOneNodeAtATime);
         test("우주 지도: 이동 중 목표가 바뀌면 되돌아 뜀", sokoban.ui.SpaceMapTest::rocketReversesMidHop);
@@ -105,6 +109,14 @@ public final class AllTests {
         test("우주 지도: 카메라 수렴(프레임 속도 무관)", sokoban.ui.SpaceMapTest::cameraConverges);
         test("우주 지도: 행성 이름(지구 시작, 모자라면 자동)", sokoban.ui.SpaceMapTest::planetNames);
         test("우주 지도: 그린 뒤 변환·클립 보존(회귀)", sokoban.ui.SpaceMapTest::drawingKeepsGraphicsState);
+        test("포탈: 플레이어가 들어가면 짝 칸으로 전송, 도착 직후엔 재전송 없음", AllTests::portalPlayerTeleport);
+        test("포탈: 상자를 밀어 넣으면 짝 칸으로 전송", AllTests::portalBoxTeleport);
+        test("포탈: 짝 칸이 막혀 있으면 들어갈 수 없다(플레이어·상자)", AllTests::portalExitBlocked);
+        test("포탈: 경계 사례(제자리 전송, 방금 떠난 칸, 상자 위의 포탈)", AllTests::portalEdgeCases);
+        test("포탈: 되돌리기·다시 하기와 이동 횟수", AllTests::portalUndoRedo);
+        test("포탈: 솔버가 포탈을 써서 최적해를 찾는다", AllTests::portalSolver);
+        test("포탈: 난이도 D에 포탈 가중치가 반영된다", AllTests::portalDifficulty);
+        test("포탈: 3D(층 사이) 전송", AllTests::portalAcrossLayers);
         test("막힘 사유: 사유별 종류와 막은 칸 좌표", AllTests::blockReasonKinds);
         test("막힘 사유: step()이 null일 때만 사유가 있다(출고 레벨 랜덤 이동)", AllTests::blockReasonMatchesStep);
         test("출고 레벨: 모두 검증 완료·풀이 재생·곡선", AllTests::shippedLevels);
@@ -746,7 +758,7 @@ public final class AllTests {
         GameConfig cfg = GameConfig.load(Path.of("config", "game.properties"));
         LevelRepository repo = LevelRepository.load(Path.of("levels"), cfg);
         check(repo.errors.isEmpty(), "레벨 오류: " + repo.errors);
-        eq(18, repo.levels.size(), "출고 레벨 수");
+        eq(20, repo.levels.size(), "출고 레벨 수");
         int first3D = -1;
         for (int i = 0; i < repo.levels.size(); i++) {
             Level l = repo.levels.get(i);
@@ -764,6 +776,190 @@ public final class AllTests {
             }
         }
         eq(3, first3D, "첫 3D 레벨은 4단계");
+    }
+
+    // ---------- 포탈 (레벨 디자인 M-04) ----------
+
+    /** 상태를 직접 만든다: 플레이어와 상자 좌표(2D, z=0). */
+    static GameState state(Level l, int px, int py, int[][] boxes) {
+        int[] b = new int[boxes.length];
+        for (int i = 0; i < boxes.length; i++) b[i] = at(l, boxes[i][0], boxes[i][1]);
+        return GameState.of(at(l, px, py), b, l.initial.holeCount() == 0 ? new int[0] : new int[0]);
+    }
+
+    static void portalPlayerTeleport() {
+        // @ A - - - B $ .  : 플레이어가 A에 들어가면 B로 전송되어 상자 바로 앞에 선다
+        Level l = lv("##########", "#@A---A$.#", "##########");
+        StepResult r = Engine.step(l, l.initial, Direction.RIGHT);
+        notNull(r, "포탈 진입은 성립한다");
+        eq(at(l, 6, 1), r.state().player);                 // 짝 포탈 B 위에 선다
+        eq(at(l, 2, 1), r.playerVia());                    // 들어간 포탈은 A
+        eq(at(l, 1, 1), r.playerFrom());
+        check(r.playerTeleported() && !r.blockTeleported());
+        check(!r.pushed());
+        // 도착한 B 위에서 같은 방향으로 계속 가면 상자를 민다(도착 직후 재전송 없음)
+        StepResult r2 = Engine.step(l, r.state(), Direction.RIGHT);
+        notNull(r2);
+        check(r2.pushed() && !r2.playerTeleported());
+        check(Engine.isCleared(l, r2.state()));
+        // B에서 왼쪽으로 나와도 평범한 이동
+        StepResult r3 = Engine.step(l, r.state(), Direction.LEFT);
+        notNull(r3);
+        eq(at(l, 5, 1), r3.state().player);
+        check(!r3.playerTeleported());
+        // 다시 B로 들어가면(오른쪽) 반대로 A로 전송된다
+        StepResult r4 = Engine.step(l, r3.state(), Direction.RIGHT);
+        notNull(r4);
+        eq(at(l, 2, 1), r4.state().player);
+        eq(at(l, 6, 1), r4.playerVia());
+    }
+
+    static void portalBoxTeleport() {
+        // @ $ A - - - B - . : 상자를 A로 밀면 B로 전송되고 플레이어는 상자가 있던 칸에 선다
+        Level l = lv("###########", "#@$A---A-.#", "###########");
+        StepResult r = Engine.step(l, l.initial, Direction.RIGHT);
+        notNull(r);
+        check(r.pushed() && r.blockTeleported() && !r.playerTeleported());
+        eq(at(l, 2, 1), r.state().player);
+        eq(at(l, 7, 1), r.blockTo());                      // 도착한 짝 포탈 B
+        eq(at(l, 3, 1), r.blockVia());                     // 들어간 포탈 A
+        check(r.state().hasBlock(at(l, 7, 1)));
+        check(!r.state().hasBlock(at(l, 3, 1)));
+        check(!r.blockVanished());
+        // 상자는 B 위에 놓여 있고, 목표로 다시 밀 수 있다(도착 직후 재전송 없음)
+        GameState s = state(l, 6, 1, new int[][]{{7, 1}});
+        StepResult r2 = Engine.step(l, s, Direction.RIGHT);
+        notNull(r2);
+        eq(at(l, 8, 1), r2.blockTo());
+        check(!r2.blockTeleported(), "도착한 포탈에서 밀어내도 다시 전송되지 않는다");
+        check(!Engine.isCleared(l, r2.state()), "(8,1)은 목표가 아니다");
+        // 비워진 포탈 칸에 들어간 플레이어는 규칙대로 짝 포탈로 전송된다(상자를 밀어낸 칸이 포탈이므로)
+        check(r2.playerTeleported());
+        eq(at(l, 3, 1), r2.state().player);
+        // 상자 옆(8-1=7이 아닌 일반 칸)에서 다시 밀면 목표(9,1)에 놓인다
+        StepResult r3 = Engine.step(l, state(l, 7, 1, new int[][]{{8, 1}}), Direction.RIGHT);
+        notNull(r3);
+        eq(at(l, 9, 1), r3.blockTo());
+        check(Engine.isCleared(l, r3.state()));
+    }
+
+    static void portalExitBlocked() {
+        Level l = lv("###########", "#@$A---A-.#", "###########");
+        // 플레이어: 짝 칸(B)에 상자가 있으면 나오면서 진행 방향으로 밀어낸다
+        GameState boxOnB = state(l, 2, 1, new int[][]{{7, 1}});
+        StepResult pushOut = Engine.step(l, boxOnB, Direction.RIGHT);
+        notNull(pushOut);
+        eq(at(l, 7, 1), pushOut.state().player);
+        check(pushOut.state().hasBlock(at(l, 8, 1)) && !pushOut.state().hasBlock(at(l, 7, 1)));
+        // 상자 뒤가 막혔으면(벽) 들어갈 수 없다
+        GameState jam = state(l, 2, 1, new int[][]{{7, 1}, {8, 1}});
+        isNull(Engine.step(l, jam, Direction.RIGHT));
+        BlockReason pr = Engine.whyBlocked(l, jam, Direction.RIGHT);
+        notNull(pr);
+        eq(BlockReason.Kind.PORTAL, pr.kind());
+        eq(8, pr.x());
+
+        // 상자: 짝 칸에 이미 상자가 있으면 밀어 넣을 수 없다
+        GameState twoBoxes = state(l, 1, 1, new int[][]{{2, 1}, {7, 1}});
+        isNull(Engine.step(l, twoBoxes, Direction.RIGHT));
+        BlockReason br = Engine.whyBlocked(l, twoBoxes, Direction.RIGHT);
+        notNull(br);
+        eq(BlockReason.Kind.PUSH_PORTAL, br.kind());
+        eq(7, br.x());
+
+        // 막힌 입력은 상태를 바꾸지 않는다(null) — 짝 칸이 비면 다시 들어갈 수 있다
+        GameState free = state(l, 2, 1, new int[][]{{9, 1}});
+        notNull(Engine.step(l, free, Direction.RIGHT));
+        isNull(Engine.whyBlocked(l, free, Direction.RIGHT));
+    }
+
+    static void portalEdgeCases() {
+        // (1) 인접한 두 포탈: B에 서서 A로 들어가면 도착이 자기 칸(B)이라 제자리 전송 -> 막힌 입력(횟수 미포함)
+        Level adj = lv("#######", "#@AA$.#", "#######");
+        StepResult in = Engine.step(adj, adj.initial, Direction.RIGHT);   // @ -> A -> B 전송
+        notNull(in);
+        eq(at(adj, 3, 1), in.state().player);
+        isNull(Engine.step(adj, in.state(), Direction.LEFT));              // B에서 A로: 제자리 전송
+        BlockReason selfTp = Engine.whyBlocked(adj, in.state(), Direction.LEFT);
+        notNull(selfTp);
+        eq(BlockReason.Kind.PORTAL, selfTp.kind());
+
+        // (2) 상자가 포탈 B 위에 있을 때 B에서 밀어내면, 플레이어는 비워진 B에 들어가므로 A로 전송된다
+        Level l = lv("###########", "#@$A---A--.#", "###########");
+        GameState s = state(l, 6, 1, new int[][]{{7, 1}});                 // 플레이어(6) 바로 앞 B(7)에 상자
+        StepResult r = Engine.step(l, s, Direction.RIGHT);                 // 상자를 8로 밀고 B에 들어간다
+        notNull(r);
+        check(r.pushed() && r.playerTeleported());
+        eq(at(l, 3, 1), r.state().player);                                 // 짝 A로 전송
+        eq(at(l, 8, 1), r.blockTo());
+        check(r.state().hasBlock(at(l, 8, 1)));
+
+        // (3) 포탈 위에 서 있는 플레이어: 레벨 파일에는 플레이어를 포탈 위에 놓을 수 없으므로 상태를 직접 만든다.
+        //     (A=1, A=2 가 서로 짝) 플레이어가 짝 포탈 A(1)에 서 있고 옆 포탈 A(2)로 들어가면 도착이 자기 칸이다.
+        Level pair = lv("#######", "#@AA$.#", "#######");
+        GameState onA1 = state(pair, 2, 1, new int[][]{{4, 1}});    // 플레이어가 첫 번째 A(2)에 서 있다
+        isNull(Engine.step(pair, onA1, Direction.RIGHT));           // 두 번째 A(3)로 들어가면 짝인 자기 칸(2)으로 돌아와 제자리 -> 막힘
+    }
+
+    static void portalUndoRedo() {
+        Level l = lv("##########", "#@A---A$.#", "##########");
+        Session ses = new Session(l, CFG);
+        GameState start = ses.state();
+        StepResult r = ses.move(Direction.RIGHT);            // 포탈 전송
+        notNull(r);
+        eq(1, ses.moves());
+        eq(at(l, 6, 1), ses.state().player);
+        ses.undo();                                          // 전송 한 번이 입력 1회로 되돌려진다 (FR-3.2)
+        eq(0, ses.moves());
+        eq(start, ses.state());
+        ses.redo();
+        eq(at(l, 6, 1), ses.state().player);
+        eq(1, ses.moves());
+        // 막힌 포탈 진입은 이동 횟수에 포함되지 않는다
+        Level two = lv("###########", "#@$A---A-.#", "###########");
+        Session s2 = new Session(two, CFG);
+        notNull(s2.move(Direction.RIGHT));                   // 상자를 B로 전송
+        eq(1, s2.moves());
+        notNull(s2.move(Direction.RIGHT));                   // A로 들어가면 B의 상자를 밀어내며 나온다
+        eq(2, s2.moves());
+    }
+
+    static void portalSolver() {
+        // 벽이 가로막고 있어 포탈을 써야만 상자에 닿는다: 1) 전송 2) 상자 밀기 3) 상자 밀기
+        Level l = lv("#########", "#@A#A$-.#", "#########");
+        Solver.Result r = Solver.solve(l, 100_000, 5000);
+        eq(Solver.Status.SOLVED, r.status());
+        eq(3, r.moves());
+        eq("RRR", r.path());
+        // 포탈 없이 같은 모양이면 풀 수 없다(벽이 막고 있음)
+        Level noPortal = lv("#########", "#@-#--$-.#", "#########");
+        eq(Solver.Status.UNSOLVABLE, Solver.solve(noPortal, 100_000, 5000).status());
+    }
+
+    static void portalDifficulty() {
+        Level plain = lv("#########", "#@-#--$.#", "#########").withSolution(3, "RRR");
+        Level portal = lv("#########", "#@A#A$-.#", "#########").withSolution(3, "RRR");
+        eq(0, plain.gimmicks.size());
+        eq(1, (int) portal.gimmicks.getOrDefault("portal", 0));
+        // D = w_portal × 쌍의 수 + α·최적수 + β·블록수 (기믹이 한 종류라 조합 보너스 없음)
+        double expected = CFG.weightOf("portal") * 1 + CFG.alpha * 3 + CFG.beta * 1;
+        near(expected, Difficulty.score(portal, CFG));
+        check(Difficulty.score(portal, CFG) > Difficulty.score(plain, CFG), "포탈이 있으면 난이도가 더 높다");
+    }
+
+    static void portalAcrossLayers() {
+        // 짝이 서로 다른 층에 있어도 전송된다. 아래층 A -> 위층 B
+        Level l = lvz("#####/#@A.#/#$-##", "#####/#A$-#/#---#");
+        // layer0: 플레이어(1,1,0) 오른쪽에 A(2,1,0). layer1: B(1,1,1), 상자(2,1,1)
+        // 상자 개수(2) >= 목표 수(1)
+        StepResult r = Engine.step(l, l.initial, Direction.RIGHT);
+        notNull(r);
+        eq(at3(l, 1, 1, 1), r.state().player);             // 위층의 B에 도착
+        eq(at3(l, 2, 1, 0), r.playerVia());
+        // 위층에서 B -> 오른쪽으로 가면 상자를 민다 (도착 직후 재전송 없음)
+        StepResult r2 = Engine.step(l, r.state(), Direction.RIGHT);
+        notNull(r2);
+        check(r2.pushed() && !r2.playerTeleported());
     }
 
     // ---------- 막힘 사유 (UI가 막은 칸을 강조하는 데 쓴다) ----------

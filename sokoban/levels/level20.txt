@@ -1,0 +1,19 @@
+id: L20
+name: 쌍둥이 포탈
+optimalMoves: 35
+solution: RTURTDLLBDDTULBUTRBTTLDDLLLTLBRUBLD
+layer 0
+----
+----
+-.--
+@-#-
+layer 1
+-#--
+---A
+---$
+-$#-
+layer 2
+#--#
+.---
+##--
+A--#

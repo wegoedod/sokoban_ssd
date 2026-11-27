@@ -219,7 +219,9 @@ public final class LevelParser {
                 portalChar[second] = e.getKey();
             }
         }
-        return new Level(id, name, w, d, h, tiles, init, opt, solution, s3, s2, Map.of(), source,
+        // 난이도 D(FR-5.3)의 기믹 항: 포탈은 쌍의 수를 인스턴스 수로 센다
+        Map<String, Integer> gimmicks = portalCells.isEmpty() ? Map.of() : Map.of("portal", portalCells.size());
+        return new Level(id, name, w, d, h, tiles, init, opt, solution, s3, s2, gimmicks, source,
                 pull, partner, portalChar);
     }
 

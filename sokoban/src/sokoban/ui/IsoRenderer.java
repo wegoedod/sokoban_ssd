@@ -175,13 +175,42 @@ final class IsoRenderer {
         }
         boolean hasPlayer = st.player >= 0;
         double px = hasPlayer ? lv.x(st.player) : 0, py = hasPlayer ? lv.y(st.player) : 0, pz = hasPlayer ? lv.z(st.player) : 0;
-        if (anim != null) {
+        float playerAlpha = 1f;
+        if (anim != null && anim.step().playerTeleported()) {
+            // 포탈 전송: 전반에는 들어간 포탈 칸까지 걸어가며 사라지고, 후반에는 짝 포탈 칸에서 나타난다
+            StepResult sr = anim.step();
+            boolean first = anim.t() < 0.5;
+            double u = first ? anim.t() * 2 : (anim.t() - 0.5) * 2;
+            if (first) {
+                px = lerp(lv.x(sr.playerFrom()), lv.x(sr.playerVia()), u);
+                py = lerp(lv.y(sr.playerFrom()), lv.y(sr.playerVia()), u);
+                pz = lerp(lv.z(sr.playerFrom()), lv.z(sr.playerVia()), u);
+                playerAlpha = (float) (1 - u);
+            } else {
+                px = lv.x(sr.playerTo());
+                py = lv.y(sr.playerTo());
+                pz = lv.z(sr.playerTo());
+                playerAlpha = (float) u;
+            }
+        } else if (anim != null) {
             px = lerp(lv.x(anim.step().playerFrom()), lv.x(anim.step().playerTo()), anim.t());
             py = lerp(lv.y(anim.step().playerFrom()), lv.y(anim.step().playerTo()), anim.t());
             pz = lerp(lv.z(anim.step().playerFrom()), lv.z(anim.step().playerTo()), anim.t());
         }
         double bx = 0, by = 0, bz = 0;
-        if (pushedTo >= 0) {
+        float boxAlpha = 1f;
+        if (pushedTo >= 0 && anim.step().blockTeleported()) {
+            int via = anim.step().blockVia();
+            boolean first = t < 0.5;
+            double u = first ? t * 2 : (t - 0.5) * 2;
+            double fx0 = first ? lerp(lv.x(pushedFrom), lv.x(via), u) : lv.x(pushedTo);
+            double fy0 = first ? lerp(lv.y(pushedFrom), lv.y(via), u) : lv.y(pushedTo);
+            double fz0 = first ? lerp(lv.z(pushedFrom), lv.z(via), u) : lv.z(pushedTo);
+            bx = fx0;
+            by = fy0;
+            bz = fz0;
+            boxAlpha = (float) (first ? 1 - u : u);
+        } else if (pushedTo >= 0) {
             bx = lerp(lv.x(pushedFrom), lv.x(pushedTo), t);
             by = lerp(lv.y(pushedFrom), lv.y(pushedTo), t);
             bz = lerp(lv.z(pushedFrom), lv.z(pushedTo), t);
@@ -208,8 +237,8 @@ final class IsoRenderer {
             if (b == pushedTo) continue;
             shadow(g, lv.x(b), lv.y(b), 0.7);
         }
-        if (pushedTo >= 0) shadow(g, bx, by, 0.7);
-        if (hasPlayer) shadow(g, px, py, 0.45);
+        if (pushedTo >= 0) shadow(g, bx, by, 0.7, boxAlpha);
+        if (hasPlayer) shadow(g, px, py, 0.45, playerAlpha);
 
         // 3) 입체물 (깊이 정렬)
         List<Item> items = new ArrayList<>();
@@ -233,7 +262,12 @@ final class IsoRenderer {
                 case ICE -> items.add(new Item(key, 0, () -> cube(g, x, y, z, Theme.ICE, 0.50f)));
                 case PORTAL -> {
                     final Color pc = lv.portalId(idx) == 'B' ? Theme.PORTAL_B : Theme.PORTAL_A;
-                    items.add(new Item(key, 0, () -> cube(g, x, y, z, pc, 0.60f)));
+                    // 큐브는 흐리게, 그 위에 바닥 링을 겹쳐 "들어가는 문"으로 읽히게 한다.
+                    // 같은 문자(A/A, B/B)끼리 같은 색이라 짝을 알아볼 수 있다.
+                    items.add(new Item(key, 0, () -> {
+                        cube(g, x, y, z, pc, 0.34f);
+                        portalRing(g, x, y, z, pc);
+                    }));
                 }
                 default -> {
                 }
@@ -249,12 +283,22 @@ final class IsoRenderer {
         if (pushedTo >= 0) {
             final double fx = bx, fy = by, fz = bz;
             final boolean fin = !vanish && lv.tile(pushedTo) == TileType.GOAL && t >= 1;
-            final float a = vanish ? (float) Math.max(0, 1 - t) : 1f;
+            final float a = vanish ? (float) Math.max(0, 1 - t) : boxAlpha;
             items.add(new Item(depth(fx + 0.5, fy + 0.5, layerBase(fz) + 0.5), 1, () -> cube(g, fx, fy, fz,
                     fin ? Theme.BLOCK_ON_GOAL : Theme.BLOCK, a)));
         }
         final double fpx = px, fpy = py, fpz = pz;
-        if (hasPlayer) items.add(new Item(depth(fpx + 0.5, fpy + 0.5, layerBase(fpz) + 0.5) + 1e-3, 2, () -> tetra(g, fpx, fpy, fpz)));
+        final float fpa = playerAlpha;
+        if (hasPlayer) items.add(new Item(depth(fpx + 0.5, fpy + 0.5, layerBase(fpz) + 0.5) + 1e-3, 2, () -> {
+            if (fpa >= 0.999f) {
+                tetra(g, fpx, fpy, fpz);
+            } else {
+                java.awt.Composite old = g.getComposite();
+                g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, Math.max(0f, fpa)));
+                tetra(g, fpx, fpy, fpz);
+                g.setComposite(old);
+            }
+        }));
         if (flashAlpha > 0f) {
             // 막은 칸: 그 칸의 벌마 바로 다음에 그려 벽·상자 위에 붉은 빛이 덮이게 한다
             final int fxc = flashX, fyc = flashY, fzc = flashZ;
@@ -384,9 +428,38 @@ final class IsoRenderer {
         }
     }
 
+    /** 칸 안쪽 바닥(그 층의 윗면)에 그리는 포탈 링. 투영을 거치므로 카메라 각도에 맞게 기울어진다. */
+    private void portalRing(Graphics2D g, double x, double y, double z, Color c) {
+        double zz = layerBase(z) + 0.5;      // 칸 중앙 높이에 띄워서 큐브와 겹쳐 보이게 한다
+        double cx = x + 0.5, cy = y + 0.5;
+        float la = layerAlpha(z);
+        double[] radii = {0.36, 0.22};
+        for (int r = 0; r < radii.length; r++) {
+            Path2D ring = new Path2D.Double();
+            for (int i = 0; i <= 24; i++) {
+                double a = i * 2 * Math.PI / 24;
+                double[] p = pt(cx + radii[r] * Math.cos(a), cy + radii[r] * Math.sin(a), zz);
+                if (i == 0) ring.moveTo(p[0], p[1]); else ring.lineTo(p[0], p[1]);
+            }
+            ring.closePath();
+            g.setStroke(new BasicStroke(r == 0 ? 3.2f : 2f));
+            g.setColor(alpha(Theme.shade(c, r == 0 ? 1.25 : 1.5), Math.min(1f, (r == 0 ? 0.95f : 0.8f) * la)));
+            g.draw(ring);
+        }
+        // 가운데 점: 안쪽으로 빨려 들어가는 느낌
+        double[] m = pt(cx, cy, zz);
+        g.setColor(alpha(Theme.shade(c, 1.7), 0.9f * la));
+        g.fill(new java.awt.geom.Ellipse2D.Double(m[0] - 3, m[1] - 3, 6, 6));
+    }
+
     private void shadow(Graphics2D g, double x, double y, double size) {
+        shadow(g, x, y, size, 1f);
+    }
+
+    /** 포탈 전송 중에는 개체가 투명해지는 만큼 그림자도 옅게 한다. */
+    private void shadow(Graphics2D g, double x, double y, double size, float strength) {
         double m = (1 - size) / 2;
-        g.setColor(new Color(0, 0, 0, 70));
+        g.setColor(new Color(0, 0, 0, Math.round(70 * Math.max(0f, Math.min(1f, strength)))));
         g.fill(square(x + m, y + m, size, 0));
     }
 

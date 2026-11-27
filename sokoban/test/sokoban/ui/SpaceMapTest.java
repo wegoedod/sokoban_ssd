@@ -113,7 +113,7 @@ public final class SpaceMapTest {
         Set<String> names = new HashSet<>();
         for (int i = 0; i < PlanetArt.namedPlanets(); i++) check(names.add(PlanetArt.planet(i).name()), "행성 이름 중복: " + i);
         check(PlanetArt.planet(0).name().equals("지구"), "레벨 1은 지구");
-        check(PlanetArt.namedPlanets() >= 18, "출고 레벨(18개)만큼은 이름 있는 행성이 있어야 한다");
+        check(PlanetArt.namedPlanets() >= 18, "기본 목록에는 이름 있는 행성이 18개 이상 있어야 한다");
         check(PlanetArt.planet(40).name().equals("미지의 행성 41"), "목록을 넘으면 자동 이름: " + PlanetArt.planet(40).name());
     }
 

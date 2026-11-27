@@ -6,7 +6,7 @@ import java.awt.event.KeyEvent;
 
 final class MainMenuScreen implements Screen {
     private final App app;
-    private final MenuList menu = new MenuList("시작", "레벨 디자이너", "종료");
+    private final MenuList menu = new MenuList("시작", "레벨 디자이너", "설정", "종료");
 
     MainMenuScreen(App app) {
         this.app = app;
@@ -30,11 +30,15 @@ final class MainMenuScreen implements Screen {
         g.setColor(Theme.TEXT_DIM);
         g.setFont(Theme.font(Font.PLAIN, 14f));
         Gfx.centered(g, "게임 중: 인접 칸 클릭 · W A S D 이동 · ↑↓ 위·아래 · ←→ 시점 회전", w / 2, h - 46);
-        Gfx.centered(g, "↑↓ 선택   Enter 확인", w / 2, h - 24);
+        Gfx.centered(g, "↑↓ 선택   Enter 확인   Esc 설정", w / 2, h - 24);
     }
 
     @Override
     public void keyPressed(KeyEvent e) {
+        if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+            app.openSettings(java.util.List.of());
+            return;
+        }
         activate(menu.key(e));
     }
 
@@ -58,6 +62,8 @@ final class MainMenuScreen implements Screen {
         } else if (i == 1) {
             app.showLevelDesigner();
         } else if (i == 2) {
+            app.openSettings(java.util.List.of());
+        } else if (i == 3) {
             System.exit(0);
         }
     }
