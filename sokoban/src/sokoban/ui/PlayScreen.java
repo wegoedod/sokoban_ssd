@@ -89,13 +89,15 @@ final class PlayScreen implements Screen {
     @Override
     public void tick(long dt) {
         cam.update(dt);
+        renderer.tickEffects(dt);
         if (blocked != null) {
             blockedElapsed += dt;
-            if (blockedElapsed >= FLASH_MS) blocked = null;
+            long duration = blocked.kind() == BlockReason.Kind.MAGNET_HELD ? 1500 : FLASH_MS;
+            if (blockedElapsed >= duration) blocked = null;
         }
         if (animStep == null) return;
         animElapsed += dt;
-        if (animElapsed >= app.settings.animMs()) {
+        if (animElapsed >= animationMillis()) {
             animStep = null;
             if (session.isCleared()) {
                 onCleared();
@@ -122,7 +124,10 @@ final class PlayScreen implements Screen {
             }
         } else {
             // 막혔다: 이동 횟수에는 포함되지 않는다. 무엇이 막았는지 찾아 화면에 알린다.
-            blocked = app.settings.blockFlash() ? Engine.whyBlocked(level, session.state(), d) : null;
+            BlockReason reason = Engine.whyBlocked(level, session.state(), d);
+            // 고정 안내는 번쩍임 설정과 관계없이 보이며, 기존 막힘 설정은 유지한다.
+            blocked = reason != null && (app.settings.blockFlash() || reason.kind() == BlockReason.Kind.MAGNET_HELD)
+                    ? reason : null;
             blockedElapsed = 0;
         }
     }
@@ -131,6 +136,10 @@ final class PlayScreen implements Screen {
         animStep = null;
         pending = null;
         if (session.isCleared() && mode == Mode.PLAYING) onCleared();
+    }
+
+    private long animationMillis() {
+        return Math.min(1800, app.settings.animMs() * (animStep == null ? 1 : Math.max(1, animStep.phases().size())));
     }
 
     private void onCleared() {
@@ -251,7 +260,9 @@ final class PlayScreen implements Screen {
             var size = app.canvasSize();
             mouseMoves.layout(level, session.state(), renderer, cam, boardArea(size.width, size.height));
             MouseMoves.Target target = mouseMoves.pick(x, y);
-            if (target != null && target.available()) move(target.direction());
+            if (target != null && (target.available()
+                    || target.cell() >= 0 && Engine.isMagnetHeld(level, session.state(), target.cell())))
+                move(target.direction());
         }
     }
 
@@ -318,8 +329,8 @@ final class PlayScreen implements Screen {
     public void paint(Graphics2D g, int w, int h) {
         Rectangle area = boardArea(w, h);
         IsoRenderer.Anim anim = animStep == null ? null
-                : new IsoRenderer.Anim(animStep, Math.min(1.0, (double) animElapsed / app.settings.animMs()));
-        if (blocked != null && mode == Mode.PLAYING) {
+                : new IsoRenderer.Anim(animStep, Math.min(1.0, (double) animElapsed / animationMillis()));
+        if (blocked != null && app.settings.blockFlash() && mode == Mode.PLAYING) {
             renderer.setFlash(blocked.x(), blocked.y(), blocked.z(), flashAlpha());
         } else {
             renderer.clearFlash();

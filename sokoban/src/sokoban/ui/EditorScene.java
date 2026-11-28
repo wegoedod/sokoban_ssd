@@ -39,22 +39,29 @@ public final class EditorScene {
             }
         }
     }
-    private static boolean known(String id){return Set.of("empty","wall","goal","hole","filled_hole","ice","portal_a","portal_b","sequence_goal","box","player").contains(id);}
+    private static boolean known(String id){return Set.of("empty","wall","goal","hole","filled_hole","ice","portal_a","portal_b","sequence_goal","box","player","iron_box","magnet_switch","magnet").contains(id);}
     private static Level adapt(EditorDocument d,int onlyLayer) {
         TileType[] tiles=new TileType[d.width*d.depth*d.floors];Arrays.fill(tiles,TileType.EMPTY);
         List<Integer> boxes=new ArrayList<>(),holes=new ArrayList<>();int player=-1;
         int[] partners=new int[tiles.length];Arrays.fill(partners,-1);char[] portals=new char[tiles.length];
         int[] orders=new int[tiles.length];
+        List<Integer> iron=new ArrayList<>();List<Magnet> magnets=new ArrayList<>();
         for(int z=0;z<d.floors;z++)if(onlyLayer<0||z==onlyLayer)for(int y=0;y<d.depth;y++)for(int x=0;x<d.width;x++) {
             int i=d.index(x,y,z);var c=d.cell(x,y,z);tiles[i]=switch(c.terrain()){
                 case "wall"->TileType.WALL;case "goal","sequence_goal"->TileType.GOAL;case "hole","filled_hole"->TileType.HOLE;
+                case "magnet_switch"->TileType.MAGNET_SWITCH;case "magnet"->TileType.MAGNET;
                 case "ice"->TileType.ICE;case "portal_a","portal_b"->TileType.PORTAL;default->TileType.EMPTY;};
             if(c.terrain().equals("sequence_goal"))orders[i]=goalOrderNumber(c.terrainProps());
             if(c.terrain().equals("hole"))holes.add(i);if(tiles[i]==TileType.PORTAL)portals[i]=c.terrain().equals("portal_b")?'B':'A';
+            if(c.entity().equals("iron_box")){boxes.add(i);iron.add(i);}
             if(c.entity().equals("box"))boxes.add(i);if(c.entity().equals("player"))player=i;
+            if(c.terrain().equals("magnet")) {
+                try {magnets.add(new Magnet(i,Magnet.direction(c.terrainProps().getOrDefault("direction","+X")),Integer.parseInt(c.terrainProps().getOrDefault("range","3"))));}
+                catch(IllegalArgumentException ex){magnets.add(new Magnet(i,Direction.RIGHT,3));}
+            }
         }
         return new Level(d.id,d.name,d.width,d.depth,d.floors,tiles,
-                GameState.of(player,boxes.stream().mapToInt(i->i).toArray(),holes.stream().mapToInt(i->i).toArray()),-1,"",null,null,Map.of(),"editor",d.pull,partners,portals,previewOrders(orders,tiles.length));
+                GameState.of(player,boxes.stream().mapToInt(i->i).toArray(),holes.stream().mapToInt(i->i).toArray(),iron.stream().mapToInt(i->i).toArray(),false),-1,"",null,null,Map.of(),"editor",d.pull,partners,portals,previewOrders(orders,tiles.length),magnets);
     }
     /**
      * 설계 중에는 순서 목표 번호가 아직 1..k로 완성되지 않았을 수 있다(예: 2번만 배치). 그런 번호는

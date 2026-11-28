@@ -1,6 +1,7 @@
 package sokoban.ui;
 
 import sokoban.core.GameState;
+import sokoban.core.Engine;
 import sokoban.core.Level;
 import sokoban.core.StepResult;
 import sokoban.core.TileType;
@@ -54,6 +55,12 @@ final class IsoRenderer {
     // 막힌 입력에서 막은 칸 강조(번쩍임). 격자 밖 칸일 수도 있다. alpha 0이면 그리지 않는다.
     private int flashX, flashY, flashZ;
     private float flashAlpha;
+    private long effectMillis;
+
+    /** 화면 효과용 시계. 턴·판정·상자 위치에는 영향을 주지 않는다. */
+    void tickEffects(long dt) {
+        effectMillis = (effectMillis + Math.max(0, dt)) % 6600;
+    }
 
     /** (x, y, z) 칸을 alpha(0~1) 세기로 번쩍이게 한다. 매 프레임 호출하고, 끝내려면 {@link #clearFlash()}. */
     void setFlash(int x, int y, int z, float alpha) {
@@ -152,6 +159,14 @@ final class IsoRenderer {
     }
 
     void render(Graphics2D g, Level lv, GameState st, Anim anim, Rectangle area, Camera cam, boolean layerFocus) {
+        if (anim != null && !anim.step().phases().isEmpty()) {
+            List<StepResult> phases = anim.step().phases();
+            double progress = Math.max(0, Math.min(1, anim.t())) * phases.size();
+            int index = Math.min(phases.size() - 1, (int) progress);
+            StepResult phase = phases.get(index);
+            renderScene(g, lv, phase.state(), new Anim(phase, Math.min(1, progress - index)), area, cam, layerFocus, -1);
+            return;
+        }
         renderScene(g, lv, st, anim, area, cam, layerFocus, -1);
     }
 
@@ -225,6 +240,7 @@ final class IsoRenderer {
         backFrame(g, lv);
         layerGuides(g, lv, activeLayer);
         layerPlane(g, lv, editorLayer >= 0 ? editorLayer : pz);
+        for (var magnet : lv.magnets) magneticBeam(g, lv, magnet, st.magnetOn);
 
         // 2) 바닥 그림자 / 목표 표시 (높이 단서). 아직 열리지 않은 순서 목표는 어두운 회색 테두리와 자물쇠로 구분한다.
         g.setStroke(new BasicStroke(1.4f));
@@ -268,6 +284,18 @@ final class IsoRenderer {
                 }
                 // 새 타일: 행동은 엔진 PR에서 구현하고, 여기서는 어느 칸인지 알아볼 수 있게 투명 색 상자만 그린다
                 case ICE -> items.add(new Item(key, 0, () -> cube(g, x, y, z, Theme.ICE, 0.50f)));
+                case MAGNET_SWITCH -> {
+                    boolean on = st.magnetOn;
+                    Color color = Theme.MAGNET;
+                    items.add(new Item(key, 0, () -> {
+                        cube(g, x, y, z, color, on ? .35f : .13f);
+                        if (on) magneticGlow(g, x, y, z, false);
+                    }));
+                }
+                case MAGNET -> items.add(new Item(key, 0, () -> {
+                    cube(g, x, y, z, Theme.MAGNET, .85f);
+                    if (st.magnetOn) magneticGlow(g, x, y, z, false);
+                }));
                 case PORTAL -> {
                     final Color pc = lv.portalId(idx) == 'B' ? Theme.PORTAL_B : Theme.PORTAL_A;
                     // 큐브는 흐리게, 그 위에 바닥 링을 겹쳐 "들어가는 문"으로 읽히게 한다.
@@ -297,15 +325,24 @@ final class IsoRenderer {
             int b = st.block(i);
             if (b == pushedTo) continue;
             final double x = lv.x(b), y = lv.y(b), z = lv.z(b);
-            final Color c = lv.tile(b) == TileType.GOAL ? Theme.BLOCK_ON_GOAL : Theme.BLOCK;
-            items.add(new Item(depth(x + 0.5, y + 0.5, layerBase(z) + 0.5), 1, () -> cube(g, x, y, z, c, 1f)));
+            final Color c = lv.tile(b) == TileType.GOAL ? Theme.BLOCK_ON_GOAL : st.isIron(b) ? Theme.IRON : Theme.BLOCK;
+            final boolean held = Engine.isMagnetHeld(lv, st, b);
+            items.add(new Item(depth(x + 0.5, y + 0.5, layerBase(z) + 0.5), 1, () -> {
+                cube(g, x, y, z, c, 1f);
+                if (held) magneticGlow(g, x, y, z, true);
+            }));
         }
         if (pushedTo >= 0) {
             final double fx = bx, fy = by, fz = bz;
             final boolean fin = !vanish && lv.tile(pushedTo) == TileType.GOAL && t >= 1;
             final float a = vanish ? (float) Math.max(0, 1 - t) : boxAlpha;
-            items.add(new Item(depth(fx + 0.5, fy + 0.5, layerBase(fz) + 0.5), 1, () -> cube(g, fx, fy, fz,
-                    fin ? Theme.BLOCK_ON_GOAL : Theme.BLOCK, a)));
+            final boolean iron = st.isIron(pushedTo);
+            // 흡인 중인 상자에 고정 표시가 먼저 붙지 않도록, 도착한 뒤에만 표시한다.
+            final boolean held = !vanish && t >= .999 && Engine.isMagnetHeld(lv, st, pushedTo);
+            items.add(new Item(depth(fx + 0.5, fy + 0.5, layerBase(fz) + 0.5), 1, () -> {
+                cube(g, fx, fy, fz, fin ? Theme.BLOCK_ON_GOAL : iron ? Theme.IRON : Theme.BLOCK, a);
+                if (held) magneticGlow(g, fx, fy, fz, true);
+            }));
         }
         final double fpx = px, fpy = py, fpz = pz;
         final float fpa = playerAlpha;
@@ -641,6 +678,74 @@ final class IsoRenderer {
 
     private static Color alpha(Color c, float a) {
         return new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.round(255 * Math.max(0f, Math.min(1f, a))));
+    }
+
+    /** 전원 ON은 부드러운 발광 윤곽, 고정된 철 상자는 밝은 테두리와 자물쇠로 구분한다. */
+    private void magneticGlow(Graphics2D original, double x, double y, double z, boolean held) {
+        Graphics2D g = (Graphics2D) original.create();
+        float strength = layerAlpha(z) * (float) (.8 + .2 * Math.sin(effectMillis * Math.PI / 1100));
+        Color light = Theme.shade(Theme.MAGNET, 1.4);
+        for (int i = 0; i < 3; i++) {
+            float width = i == 0 ? 10f : i == 1 ? 5f : 1.8f;
+            float opacity = i == 0 ? .09f : i == 1 ? .20f : .85f;
+            g.setStroke(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(alpha(light, strength * opacity));
+            cubeEdges(g, x, y, z);
+        }
+        if (held) {
+            // 텍스트를 띄우지 않고 큐브 중앙에 작은 고정 아이콘을 얹는다.
+            double[] p = pt(x + .5, y + .5, layerBase(z) + .66);
+            double size = Math.max(10, Math.min(17, 13 * scale));
+            g.setColor(alpha(Theme.BG_BOTTOM, .88f * layerAlpha(z)));
+            g.fill(new java.awt.geom.Ellipse2D.Double(p[0] - size, p[1] - size, size * 2, size * 2));
+            g.setColor(alpha(light, .98f * layerAlpha(z)));
+            g.setStroke(new BasicStroke(2f));
+            g.draw(new java.awt.geom.Arc2D.Double(p[0] - size * .40, p[1] - size * .65,
+                    size * .8, size * .9, 0, 180, java.awt.geom.Arc2D.OPEN));
+            g.fill(new java.awt.geom.RoundRectangle2D.Double(p[0] - size * .6, p[1] - size * .2,
+                    size * 1.2, size * .85, 3, 3));
+            g.setColor(alpha(Theme.BG_BOTTOM, layerAlpha(z)));
+            g.fill(new java.awt.geom.Ellipse2D.Double(p[0] - 1.5, p[1] + size * .05, 3, 4));
+        }
+        g.dispose();
+    }
+
+    private void magneticBeam(Graphics2D original, Level lv, sokoban.core.Magnet magnet, boolean on) {
+        int end = magnet.cell();
+        for (int n=0;n<magnet.range();n++) {
+            int next=lv.neighbor(end,magnet.facing());
+            if(next<0)break;
+            end=next;
+            if(lv.tile(end)==TileType.WALL || lv.tile(end)==TileType.MAGNET)break;
+        }
+        if(end==magnet.cell())return;
+        Graphics2D g=(Graphics2D)original.create();
+        g.setColor(alpha(Theme.MAGNET,on?.7f:.22f));
+        g.setStroke(new BasicStroke(on?2f:1f,BasicStroke.CAP_ROUND,BasicStroke.JOIN_ROUND,10,new float[]{5,5},
+                on ? (float) ((effectMillis / 55.0) % 10) : 0));
+        int c=magnet.cell();
+        double[] a=pt(lv.x(end)+.5,lv.y(end)+.5,layerBase(lv.z(end))+.5);
+        double[] b=pt(lv.x(c)+.5,lv.y(c)+.5,layerBase(lv.z(c))+.5);
+        line(g,a,b);
+        if (on) {
+            g.setStroke(new BasicStroke(7f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(alpha(Theme.MAGNET, .12f));
+            line(g, a, b);
+            // 먼 곳에서 장치 쪽으로 흐르는 입자가 실제 흡인 방향을 보여 준다.
+            for (int i = 0; i < 4; i++) {
+                double progress = (effectMillis / 1650.0 + i / 4.0) % 1;
+                double px = lerp(a[0], b[0], progress), py = lerp(a[1], b[1], progress);
+                g.setColor(alpha(Theme.shade(Theme.MAGNET, 1.5), .82f));
+                g.fill(new java.awt.geom.Ellipse2D.Double(px - 2.4, py - 2.4, 4.8, 4.8));
+            }
+        }
+        g.setColor(alpha(Theme.MAGNET, on ? .85f : .22f));
+        double dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);
+        if(len>1) {
+            double x=lerp(a[0],b[0],.55),y=lerp(a[1],b[1],.55),ux=dx/len,uy=dy/len;
+            g.fill(poly(new double[]{x,y},new double[]{x-10*ux+5*uy,y-10*uy-5*ux},new double[]{x-10*ux-5*uy,y-10*uy+5*ux}));
+        }
+        g.dispose();
     }
 
     private static double lerp(double a, double b, double t) {

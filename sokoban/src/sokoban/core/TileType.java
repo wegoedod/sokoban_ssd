@@ -27,5 +27,9 @@ public enum TileType {
      * 포탈. 짝이 되는 칸은 {@link Level#portalPartner(int)}로 찾는다(레벨 디자인 M-04).
      * 플레이어나 상자가 들어가면 짝 포탈 칸으로 전송된다. 짝 칸이 막혀 있으면 들어갈 수 없다(규칙은 {@link Engine}).
      */
-    PORTAL
+    PORTAL,
+    /** 플레이어가 새로 진입할 때 모든 자기장 장치의 전원을 반전한다. */
+    MAGNET_SWITCH,
+    /** 지정 방향의 직선 범위에서 철 상자를 끌어당기는 고체 장치. */
+    MAGNET
 }

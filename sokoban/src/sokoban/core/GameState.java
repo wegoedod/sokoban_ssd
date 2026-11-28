@@ -3,7 +3,7 @@ package sokoban.core;
 import java.util.Arrays;
 
 /**
- * 불변 게임 상태: 플레이어 위치, 블록 위치 집합, 아직 메워지지 않은 구멍 집합.
+ * 불변 게임 상태: 플레이어·블록·철 상자 위치, 남은 구멍, 자기장 전원.
  * 위치는 {@link Level#idx(int, int, int)} 인덱스. 되돌리기와 솔버가 공통으로 쓴다(NFR-3).
  *
  * <p>순서 목표의 잠금은 상태에 따로 저장하지 않는다. <b>상자 배치에서 순수하게 계산</b>되기 때문이다:
@@ -15,14 +15,23 @@ public final class GameState {
     public final int player;
     private final int[] blocks; // 오름차순
     private final int[] holes;  // 오름차순, 남은 구멍
+    private final int[] iron;   // 철 상자 위치, blocks의 부분집합
+    public final boolean magnetOn;
     private final int hash;
 
     private GameState(int player, int[] sortedBlocks, int[] sortedHoles) {
+        this(player, sortedBlocks, sortedHoles, new int[0], false);
+    }
+
+    private GameState(int player, int[] blocks, int[] holes, int[] iron, boolean magnetOn) {
         this.player = player;
-        this.blocks = sortedBlocks;
-        this.holes = sortedHoles;
-        this.hash = 31 * (31 * (31 * player + Arrays.hashCode(sortedBlocks))
-                + Arrays.hashCode(sortedHoles));
+        this.blocks = blocks;
+        this.holes = holes;
+        this.iron = iron;
+        this.magnetOn = magnetOn;
+        int h = 31 * (31 * player + Arrays.hashCode(blocks)) + Arrays.hashCode(holes);
+        h = 31 * h + Arrays.hashCode(iron);
+        this.hash = 31 * h + Boolean.hashCode(magnetOn);
     }
 
     public static GameState of(int player, int[] blocks, int[] holes) {
@@ -31,6 +40,20 @@ public final class GameState {
         Arrays.sort(b);
         Arrays.sort(h);
         return new GameState(player, b, h);
+    }
+
+    public static GameState of(int player, int[] blocks, int[] holes, int[] iron,
+                               boolean magnetOn) {
+        GameState base = of(player, blocks, holes);
+        int[] metal = iron.clone();
+        Arrays.sort(metal);
+        for (int i : metal) if (!base.hasBlock(i)) throw new IllegalArgumentException("철 상자는 블록이어야 한다.");
+        return new GameState(player, base.blocks, base.holes, metal, magnetOn);
+    }
+
+    public boolean isIron(int cell) { return Arrays.binarySearch(iron, cell) >= 0; }
+    public GameState withMagnet(boolean enabled) {
+        return new GameState(player, blocks, holes, iron, enabled);
     }
 
     public int blockCount() {
@@ -79,7 +102,7 @@ public final class GameState {
     }
 
     public GameState withPlayer(int newPlayer) {
-        return new GameState(newPlayer, blocks, holes);
+        return new GameState(newPlayer, blocks, holes, iron, magnetOn);
     }
 
     /** 플레이어를 옮기면서 블록 {@code from}을 {@code to}로 옮긴다. */
@@ -88,7 +111,7 @@ public final class GameState {
         int pos = Arrays.binarySearch(nb, from);
         nb[pos] = to;
         Arrays.sort(nb);
-        return new GameState(newPlayer, nb, holes);
+        return new GameState(newPlayer, nb, holes, moved(iron, from, to), magnetOn);
     }
 
     /** 플레이어를 옮기면서 블록 {@code from}을 구멍 {@code hole}에 밀어 넣는다(블록·구멍 모두 소멸). */
@@ -103,7 +126,17 @@ public final class GameState {
         for (int h : holes) {
             if (h != hole) nh[k++] = h;
         }
-        return new GameState(newPlayer, nb, nh);
+        return new GameState(newPlayer, nb, nh, removed(iron, from), magnetOn);
+    }
+
+    private static int[] moved(int[] positions, int from, int to) {
+        int index = Arrays.binarySearch(positions, from);
+        if (index < 0) return positions;
+        int[] next = positions.clone(); next[index] = to; Arrays.sort(next); return next;
+    }
+
+    private static int[] removed(int[] positions, int from) {
+        return Arrays.stream(positions).filter(p -> p != from).toArray();
     }
 
     @Override
@@ -111,7 +144,9 @@ public final class GameState {
         if (this == o) return true;
         if (!(o instanceof GameState other)) return false;
         return hash == other.hash && player == other.player
-                && Arrays.equals(blocks, other.blocks) && Arrays.equals(holes, other.holes);
+                && magnetOn == other.magnetOn
+                && Arrays.equals(blocks, other.blocks) && Arrays.equals(holes, other.holes)
+                && Arrays.equals(iron, other.iron);
     }
 
     @Override
@@ -122,6 +157,7 @@ public final class GameState {
     @Override
     public String toString() {
         return "GameState{player=" + player + ", blocks=" + Arrays.toString(blocks)
-                + ", holes=" + Arrays.toString(holes) + "}";
+                + ", holes=" + Arrays.toString(holes) + ", iron=" + Arrays.toString(iron)
+                + ", magnet=" + magnetOn + "}";
     }
 }

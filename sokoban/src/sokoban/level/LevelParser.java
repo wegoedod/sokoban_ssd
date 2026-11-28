@@ -3,6 +3,7 @@ package sokoban.level;
 import sokoban.core.Direction;
 import sokoban.core.GameState;
 import sokoban.core.Level;
+import sokoban.core.Magnet;
 import sokoban.core.TileType;
 
 import java.util.ArrayList;
@@ -33,6 +34,8 @@ import java.util.TreeMap;
  * 문자: {@code #}벽 {@code -}(또는 공백)빈 공간 {@code .}목표 {@code O}구멍 {@code =}메워진 구멍(처음부터 평지)
  * {@code ~}빙판 {@code A}{@code B}포탈 {@code $}블록 {@code *}목표 위 블록
  * {@code @}플레이어 {@code +}목표 위 플레이어, {@code 1}~{@code 9}순서 목표(번호).
+ * {@code I}철 상자 {@code J}목표 위 철 상자 {@code S}자기장 스위치 {@code M}자기장 장치.
+ * 장치 속성: {@code magnet.x,y,z: +X,3}. 좌표는 0부터, 방향은 ±X/±Y/±Z, 범위는 1~32.
  * 층은 {@code layer N}으로 나눈다(0부터 연속, 0이 맨 아래). 격자 밖은 고체다.
  *
  * <p>포탈은 문자마다 정확히 두 칸이 있어야 한다(레벨 디자인 M-04). 두 칸은 서로의 짝이며 같은 층일 필요는 없다.
@@ -122,7 +125,7 @@ public final class LevelParser {
         boolean pull = boolMeta(source, meta, metaLine, "pull", false);
         Set<String> known = Set.of("id", "name", "optimalMoves", "solution", "star3", "star2", "pull");
         for (String k : meta.keySet()) {
-            if (!known.contains(k)) {
+            if (!known.contains(k) && !k.startsWith("magnet.")) {
                 throw new LevelFormatException(source, metaLine.get(k), "알 수 없는 메타데이터 '" + k + "'");
             }
         }
@@ -139,6 +142,7 @@ public final class LevelParser {
         java.util.Arrays.fill(tiles, TileType.EMPTY);
         List<Integer> blocks = new ArrayList<>();
         List<Integer> holes = new ArrayList<>();
+        List<Integer> iron = new ArrayList<>();
         int player = -1;
         int goalCount = 0;
         // 순서 목표: 셀 인덱스별 번호(0=일반 목표 또는 목표 아님) / 번호 → 처음 나온 줄(중복 보고용)
@@ -169,6 +173,10 @@ public final class LevelParser {
                         case 'A', 'B' -> t = TileType.PORTAL;
                         case '$' -> { t = TileType.EMPTY; block = true; }
                         case '*' -> { t = TileType.GOAL; block = true; }
+                        case 'I' -> { t = TileType.EMPTY; block = true; iron.add(idx); }
+                        case 'J' -> { t = TileType.GOAL; block = true; iron.add(idx); }
+                        case 'S' -> t = TileType.MAGNET_SWITCH;
+                        case 'M' -> t = TileType.MAGNET;
                         case '@' -> { t = TileType.EMPTY; pl = true; }
                         case '+' -> { t = TileType.GOAL; pl = true; }
                         // 숫자는 번호가 붙은 목표(순서 목표)다. 지형은 목표 칸이고, 순서만 따로 기록한다.
@@ -201,7 +209,7 @@ public final class LevelParser {
             }
         }
         if (player < 0) throw new LevelFormatException(source, 0, "플레이어('@' 또는 '+')가 없다.");
-        if (goalCount == 0) throw new LevelFormatException(source, 0, "목표가 없다('.' 또는 '1'~''9').");
+        if (goalCount == 0) throw new LevelFormatException(source, 0, "목표가 없다('.' 또는 '1'~'9').");
         for (int o = 1; o <= orderLine.size(); o++) {
             if (!orderLine.containsKey(o)) {
                 throw new LevelFormatException(source, 0, "순서 목표 번호는 1부터 "
@@ -224,7 +232,7 @@ public final class LevelParser {
         Set<Integer> bs = new HashSet<>(blocks);
         if (bs.size() != b.length) throw new LevelFormatException(source, 0, "블록이 겹쳐 있다.");
 
-        GameState init = GameState.of(player, b, hs);
+        GameState init = GameState.of(player, b, hs, iron.stream().mapToInt(Integer::intValue).toArray(), false);
         for (int hIdx : hs) {
             if (bs.contains(hIdx)) throw new LevelFormatException(source, 0, "구멍 위에 블록이 놓여 있다.");
         }
@@ -247,9 +255,33 @@ public final class LevelParser {
         Map<String, Integer> gimmicks = new LinkedHashMap<>();
         if (!portalCells.isEmpty()) gimmicks.put("portal", portalCells.size());
         if (!orderLine.isEmpty()) gimmicks.put("sequence_goal", orderLine.size());
+        List<Magnet> magnets = new ArrayList<>();
+        Map<Integer, Magnet> configured = new HashMap<>();
+        for (String key : meta.keySet()) {
+            if (!key.startsWith("magnet.")) continue;
+            try {
+                String[] xyz = key.substring(7).split(",", -1);
+                String[] settings = meta.get(key).split(",", -1);
+                if (xyz.length != 3 || settings.length != 2) throw new IllegalArgumentException();
+                int x = Integer.parseInt(xyz[0].trim()), y = Integer.parseInt(xyz[1].trim()), z = Integer.parseInt(xyz[2].trim());
+                if (x < 0 || x >= w || y < 0 || y >= d || z < 0 || z >= h) throw new IllegalArgumentException();
+                int cell = (z * d + y) * w + x;
+                if (tiles[cell] != TileType.MAGNET || configured.containsKey(cell)) throw new IllegalArgumentException();
+                configured.put(cell, new Magnet(cell, Magnet.direction(settings[0]), Integer.parseInt(settings[1].trim())));
+            } catch (IllegalArgumentException ex) {
+                throw new LevelFormatException(source, metaLine.get(key),
+                        "자기장 설정은 'magnet.x,y,z: +X,3' 형식입니다. 좌표는 M 칸, 방향은 ±X/±Y/±Z, 범위는 1~32여야 합니다.");
+            }
+        }
+        int magnetSwitches = 0;
+        for (int i = 0; i < tiles.length; i++) {
+            if (tiles[i] == TileType.MAGNET) magnets.add(configured.getOrDefault(i, new Magnet(i, Direction.RIGHT, 3)));
+            if (tiles[i] == TileType.MAGNET_SWITCH) magnetSwitches++;
+        }
+        if (!magnets.isEmpty() || magnetSwitches > 0) gimmicks.put("magnet", magnets.size() + magnetSwitches);
         int[] orders = orderLine.isEmpty() ? null : goalOrder;
         return new Level(id, name, w, d, h, tiles, init, opt, solution, s3, s2, gimmicks, source,
-                pull, partner, portalChar, orders);
+                pull, partner, portalChar, orders, magnets);
     }
 
     private static boolean boolMeta(String source, Map<String, String> meta, Map<String, Integer> metaLine,
