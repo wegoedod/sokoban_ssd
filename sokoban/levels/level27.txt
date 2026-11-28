@@ -1,0 +1,19 @@
+id: L27
+name: 잠긴 웜홀
+theme: station
+optimalMoves: 21
+solution: DRRRRRLLLLLDRRLDRURRR
+layer 0
+@----
+-$-A-
+-$--B
+--$2-
+#####
+#####
+layer 1
+#####
+#####
+#####
+#####
+A--1-
+B-3--

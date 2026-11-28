@@ -40,6 +40,8 @@ public final class Level {
     /** 순서 번호 → 셀 인덱스(1..sequenceGoalCount). 순서 목표가 없으면 null. */
     private final int[] sequenceCell;
     public final java.util.List<Magnet> magnets;
+    /** 무대(지도 목적지·배경). 규칙에는 영향이 없다. */
+    public final LevelTheme theme;
 
     public Level(String id, String name, int w, int d, int h, TileType[] tiles, GameState initial,
                  int optimalMoves, String solution, Double star3Ratio, Double star2Ratio,
@@ -78,6 +80,16 @@ public final class Level {
                  Map<String, Integer> gimmicks, String source,
                  boolean pullAllowed, int[] portalPartner, char[] portalChar, int[] goalOrder,
                  java.util.List<Magnet> magnets) {
+        this(id, name, w, d, h, tiles, initial, optimalMoves, solution, star3Ratio, star2Ratio,
+                gimmicks, source, pullAllowed, portalPartner, portalChar, goalOrder, magnets, null);
+    }
+
+    /** @param theme 무대. null이면 쓰인 기믹으로 고른다({@link LevelTheme#infer}). */
+    public Level(String id, String name, int w, int d, int h, TileType[] tiles, GameState initial,
+                 int optimalMoves, String solution, Double star3Ratio, Double star2Ratio,
+                 Map<String, Integer> gimmicks, String source,
+                 boolean pullAllowed, int[] portalPartner, char[] portalChar, int[] goalOrder,
+                 java.util.List<Magnet> magnets, LevelTheme theme) {
         if ((portalPartner == null) != (portalChar == null)) {
             throw new IllegalArgumentException("portalPartner와 portalChar는 함께 주거나 함께 null이어야 한다.");
         }
@@ -142,6 +154,7 @@ public final class Level {
         this.goals = new int[n];
         int k = 0;
         for (int i = 0; i < tiles.length; i++) if (tiles[i] == TileType.GOAL) goals[k++] = i;
+        this.theme = theme != null ? theme : LevelTheme.infer(seq > 0 || hasMagnets(), portalPartner != null);
     }
 
     public int idx(int x, int y, int z) {
@@ -233,7 +246,7 @@ public final class Level {
 
     public Level withSolution(int optimalMoves, String solution) {
         return new Level(id, name, w, d, h, tiles, initial, optimalMoves, solution,
-                star3Ratio, star2Ratio, gimmicks, source, pullAllowed, portalPartner, portalChar, goalOrder, magnets);
+                star3Ratio, star2Ratio, gimmicks, source, pullAllowed, portalPartner, portalChar, goalOrder, magnets, theme);
     }
 
     public boolean hasMagnets() {

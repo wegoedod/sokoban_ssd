@@ -1,0 +1,18 @@
+id: L22
+name: 자석 열쇠
+theme: station
+optimalMoves: 7
+solution: RUTRBDR
+magnet.0,0,1: +X,5
+layer 0
+######
+##1###
+######
+layer 1
+M2---I
+--$-##
+@S-$3-
+layer 2
+------
+------
+------

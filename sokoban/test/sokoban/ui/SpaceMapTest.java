@@ -1,5 +1,7 @@
 package sokoban.ui;
 
+import sokoban.core.LevelTheme;
+
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.geom.AffineTransform;
@@ -118,6 +120,62 @@ public final class SpaceMapTest {
     }
 
     /**
+     * 목적지는 테마별로 차례대로 정해진다: 첫 행성 레벨은 지구, 첫 웜홀 레벨은 웜홀, 첫 정거장 레벨은 안드로메다 정거장.
+     * 출고 캠페인에서는 이름이 모두 다르고, 정거장 레벨은 정거장 그림, 포탈 레벨은 웜홀(또는 블랙홀) 그림이다.
+     */
+    public static void themedDestinations() {
+        List<sokoban.core.Level> levels = sokoban.level.LevelRepository.load(java.nio.file.Path.of("levels"),
+                sokoban.config.GameConfig.defaults()).levels;
+        List<PlanetArt.Planet> dest = PlanetArt.destinations(levels);
+        check(dest.size() == levels.size(), "레벨마다 목적지");
+        check(dest.get(0).name().equals("지구"), "첫 목적지는 지구");
+        Set<String> names = new HashSet<>();
+        boolean firstWormhole = true, firstStation = true;
+        for (int i = 0; i < levels.size(); i++) {
+            PlanetArt.Planet p = dest.get(i);
+            check(names.add(p.name()), "목적지 이름 중복: " + p.name());
+            switch (levels.get(i).theme) {
+                case STATION -> {
+                    check(p.kind() == PlanetArt.Kind.STATION, levels.get(i).id + " 는 정거장 그림");
+                    if (firstStation) check(p.name().equals("안드로메다 정거장"), "첫 정거장: " + p.name());
+                    firstStation = false;
+                }
+                case WORMHOLE -> {
+                    check(p.kind() == PlanetArt.Kind.WORMHOLE || p.kind() == PlanetArt.Kind.BLACKHOLE,
+                            levels.get(i).id + " 는 웜홀 그림");
+                    if (firstWormhole) check(p.name().equals("웜홀"), "첫 웜홀: " + p.name());
+                    firstWormhole = false;
+                }
+                case PLANET -> check(p.kind() != PlanetArt.Kind.STATION && p.kind() != PlanetArt.Kind.WORMHOLE,
+                        levels.get(i).id + " 는 행성 그림");
+            }
+        }
+        check(PlanetArt.destination(LevelTheme.STATION, 40).kind() == PlanetArt.Kind.STATION, "정거장 목록을 넘어도 정거장");
+        check(PlanetArt.destination(LevelTheme.WORMHOLE, 40).kind() == PlanetArt.Kind.WORMHOLE, "웜홀 목록을 넘어도 웜홀");
+    }
+
+    /** 세 무대의 배경이 모두 그려지고(화면을 덮고), 그린 뒤 변환·클립이 그대로다. */
+    public static void worldBackdrops() {
+        for (LevelTheme theme : LevelTheme.values()) {
+            BufferedImage img = new BufferedImage(640, 420, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = img.createGraphics();
+            Rectangle clip = new Rectangle(0, 0, 640, 420);
+            g.setClip(clip);
+            AffineTransform identity = g.getTransform();
+            WorldStyle style = WorldStyle.of(theme, PlanetArt.destination(theme, 0).base());
+            style.paintBackdrop(g, 640, 420, 1234);
+            check(g.getTransform().equals(identity), theme + " 배경 뒤 변환이 바뀌었다");
+            check(clip.equals(g.getClipBounds()), theme + " 배경 뒤 클립이 바뀌었다");
+            check((img.getRGB(5, 5) >>> 24) == 255 && (img.getRGB(635, 415) >>> 24) == 255, theme + " 배경이 화면을 덮는다");
+            check(style.wall != null && style.grid != null, theme + " 팔레트");
+            g.dispose();
+        }
+        // 블랙홀처럼 검은 목적지도 보이는 강조색을 쓴다
+        WorldStyle dark = WorldStyle.of(LevelTheme.WORMHOLE, java.awt.Color.BLACK);
+        check(dark.accent.getRed() + dark.accent.getGreen() + dark.accent.getBlue() > 60, "검은 목적지 강조색 대체");
+    }
+
+    /**
      * 행성을 그린 뒤에도 그래픽 상태(변환·클립)가 그대로여야 한다. 고리(토성형)를 그릴 때 클립을 회전된 좌표로
      * 복원하는 버그가 있어서, 고리 행성이 보이는 동안 화면 아래쪽이 대각선으로 잘렸다.
      */
@@ -133,6 +191,15 @@ public final class SpaceMapTest {
                 check(g.getTransform().equals(identity), "변환이 바뀌었다: " + PlanetArt.planet(i).name());
                 check(clip.equals(g.getClipBounds()) && g.getClip() instanceof Rectangle,
                         "클립이 바뀌었다: " + PlanetArt.planet(i).name() + " " + g.getClip());
+            }
+        }
+        for (LevelTheme theme : LevelTheme.values()) {
+            for (PlanetArt.Planet p : PlanetArt.named(theme)) {
+                for (boolean locked : new boolean[]{false, true}) {
+                    PlanetArt.drawPlanet(g, p, 300, 200, 30, 0.5, locked);
+                    check(g.getTransform().equals(identity), "변환이 바뀌었다: " + p.name());
+                    check(clip.equals(g.getClipBounds()) && g.getClip() instanceof Rectangle, "클립이 바뀌었다: " + p.name());
+                }
             }
         }
         PlanetArt.drawRocket(g, 300, 200, 0.7, 14, 0.5);

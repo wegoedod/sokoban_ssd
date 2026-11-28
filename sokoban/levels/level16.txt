@@ -1,24 +1,25 @@
 id: L16
-name: 다락과 지하
-optimalMoves: 22
-solution: LUUTTULDTRRURDLLBBBLTT
+name: 구멍과 목표
+theme: planet
+optimalMoves: 17
+solution: UUTLTRLURTRBDDTDB
 layer 0
 ----
----#
---#-
---@#
-layer 1
--#-#
-$$--
----$
----#
-layer 2
+-$--
 ----
-$---
-.---
-O---
+-#@#
+layer 1
+---.
+--$-
+----
+-#-.
+layer 2
+O-$-
+#---
+----
+----
 layer 3
 ----
-.---
----.
---#-
+----
+----
+----

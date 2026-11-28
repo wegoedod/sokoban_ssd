@@ -1,6 +1,7 @@
 package sokoban.ui;
 
 import sokoban.core.Level;
+import sokoban.core.LevelTheme;
 import sokoban.save.SaveStore;
 
 import java.awt.BasicStroke;
@@ -28,6 +29,8 @@ final class LevelSelectScreen implements Screen {
     private final App app;
     private final List<Level> levels;
     private final SpaceMap map;
+    /** 레벨마다 정해진 목적지(행성·웜홀·우주정거장). */
+    private final List<PlanetArt.Planet> dest;
 
     private int selected;
     private int hover = -1;
@@ -44,6 +47,7 @@ final class LevelSelectScreen implements Screen {
         this.app = app;
         this.levels = app.repo.levels;
         this.map = new SpaceMap(levels.size());
+        this.dest = PlanetArt.destinations(levels);
         this.selected = Math.max(0, Math.min(focus, Math.max(0, levels.size() - 1)));
         // 처음 열 때는 지구(레벨 1)에서 출발해 선택된 행성까지 날아간다
         map.placeAt(introPlayed ? selected : 0);
@@ -128,7 +132,7 @@ final class LevelSelectScreen implements Screen {
         boolean sel = i == selected;
         double glow = sel ? 1.0 : (i == hover ? 0.6 : 0.0);
         double r = planetR * (sel ? 1.2 : 1.0);
-        PlanetArt.drawPlanet(g, PlanetArt.planet(i), sx, sy, r, glow, !unlocked);
+        PlanetArt.drawPlanet(g, dest.get(i), sx, sy, r, glow, !unlocked);
 
         if (sel) {
             g.setStroke(new BasicStroke(2f));
@@ -144,7 +148,7 @@ final class LevelSelectScreen implements Screen {
         Gfx.centered(g, String.valueOf(i + 1), (int) sx, ty);
         g.setFont(Theme.font(Font.PLAIN, 12f));
         g.setColor(Theme.TEXT_DIM);
-        Gfx.centered(g, PlanetArt.planet(i).name(), (int) sx, ty + 16);
+        Gfx.centered(g, dest.get(i).name(), (int) sx, ty + 16);
         if (unlocked) {
             SaveStore.Record rec = app.save.get(lv.id);
             if (rec.bestStars() > 0) Gfx.stars(g, sx, ty + 33, 5.5, rec.bestStars());
@@ -165,7 +169,7 @@ final class LevelSelectScreen implements Screen {
     }
 
     private void drawHoverLabel(Graphics2D g, int i) {
-        String text = PlanetArt.planet(i).name() + " · " + levels.get(i).name;
+        String text = dest.get(i).name() + " · " + levels.get(i).name;
         g.setFont(Theme.font(Font.BOLD, 14f));
         int tw = g.getFontMetrics().stringWidth(text);
         double sx = screenX(i), sy = screenY(i) - planetR - 34;
@@ -181,7 +185,7 @@ final class LevelSelectScreen implements Screen {
         Gfx.centered(g, "우주 탐험", w / 2, 58);
         g.setFont(Theme.font(Font.PLAIN, 15f));
         g.setColor(Theme.TEXT_DIM);
-        Gfx.centered(g, "지구에서 출발해 한 행성씩 나아가세요 · 이전 레벨을 별 1개 이상으로 클리어하면 다음 행성이 열려요", w / 2, 84);
+        Gfx.centered(g, "지구에서 출발해 행성·웜홀·우주정거장을 차례로 지나세요 · 이전 레벨을 별 1개 이상으로 클리어하면 다음 목적지가 열려요", w / 2, 84);
     }
 
     /** 아래쪽 정보 패널: 선택한 행성/레벨 정보와 착륙 버튼. */
@@ -199,22 +203,22 @@ final class LevelSelectScreen implements Screen {
 
         g.setFont(Theme.font(Font.BOLD, 24f));
         g.setColor(Theme.TEXT);
-        g.drawString((selected + 1) + ". " + PlanetArt.planet(selected).name(), px + 24, py + 36);
+        g.drawString((selected + 1) + ". " + dest.get(selected).name(), px + 24, py + 36);
         g.setFont(Theme.font(Font.PLAIN, 16f));
         g.setColor(Theme.ACCENT);
-        g.drawString(lv.name + "   ·   최적 " + lv.optimalMoves + "수", px + 24, py + 62);
+        g.drawString(lv.name + "   ·   " + lv.theme.label + gimmickText(lv) + "   ·   최적 " + lv.optimalMoves + "수", px + 24, py + 62);
 
         g.setFont(Theme.font(Font.PLAIN, 14f));
         g.setColor(Theme.TEXT_DIM);
         if (!unlocked) {
-            g.drawString("잠긴 행성 — 이전 레벨을 별 1개 이상으로 클리어하면 열려요.", px + 24, py + 88);
+            g.drawString("잠긴 " + noun(lv.theme) + " — 이전 레벨을 별 1개 이상으로 클리어하면 열려요.", px + 24, py + 88);
         } else {
             SaveStore.Record rec = app.save.get(lv.id);
             if (rec.bestStars() > 0) {
                 g.drawString("최고 기록  " + rec.bestMoves() + "수 · " + rec.bestScore() + "점", px + 24, py + 88);
                 Gfx.stars(g, px + 24 + 250, py + 83, 8, rec.bestStars());
             } else {
-                g.drawString("아직 가 보지 않은 행성이에요.", px + 24, py + 88);
+                g.drawString("아직 가 보지 않은 " + noun(lv.theme) + "이에요.", px + 24, py + 88);
             }
         }
 
@@ -229,7 +233,7 @@ final class LevelSelectScreen implements Screen {
         g.draw(new RoundRectangle2D.Double(landButton.x, landButton.y, bw, bh, 16, 16));
         g.setFont(Theme.font(Font.BOLD, 20f));
         g.setColor(ready ? Theme.TEXT : Theme.TEXT_DIM);
-        Gfx.centered(g, ready ? "착륙  ▶" : "잠김", landButton.x + bw / 2, landButton.y + 33);
+        Gfx.centered(g, ready ? verb(lv.theme) + "  ▶" : "잠김", landButton.x + bw / 2, landButton.y + 33);
 
         if (!status.isEmpty()) {
             g.setFont(Theme.font(Font.PLAIN, 15f));
@@ -241,7 +245,7 @@ final class LevelSelectScreen implements Screen {
     private void footer(Graphics2D g, int w, int h) {
         g.setFont(Theme.font(Font.PLAIN, 14f));
         g.setColor(Theme.TEXT_DIM);
-        Gfx.centered(g, "← → 한 칸 이동   Enter 착륙   Esc 메인 메뉴   ·   행성을 클릭하면 날아가고, 한 번 더 클릭하면 착륙", w / 2, h - 18);
+        Gfx.centered(g, "← → 한 칸 이동   Enter 착륙·진입·도킹   Esc 메인 메뉴   ·   목적지를 클릭하면 날아가고, 한 번 더 클릭하면 출발", w / 2, h - 18);
     }
 
     // ---------------------------------------------------------------
@@ -309,9 +313,37 @@ final class LevelSelectScreen implements Screen {
         return map.nodeAt(wx, wy, amplitude, planetR * 1.35);
     }
 
+    /** 목적지 종류를 부르는 말. */
+    static String noun(LevelTheme theme) {
+        return switch (theme) {
+            case PLANET -> "행성";
+            case WORMHOLE -> "웜홀";
+            case STATION -> "정거장";
+        };
+    }
+
+    /** 출발 버튼 글자: 행성은 착륙, 웜홀은 진입, 정거장은 도킹. */
+    static String verb(LevelTheme theme) {
+        return switch (theme) {
+            case PLANET -> "착륙";
+            case WORMHOLE -> "진입";
+            case STATION -> "도킹";
+        };
+    }
+
+    /** 레벨에 쓰인 기믹 안내(" · 구멍·포탈" 꼴). 기믹이 없으면 빈 문자열. */
+    static String gimmickText(Level lv) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        if (lv.holeCount() > 0) parts.add("구멍");
+        if (lv.gimmicks.containsKey("portal")) parts.add("포탈");
+        if (lv.hasMagnets()) parts.add("자기장");
+        if (lv.hasSequenceGoals()) parts.add("순서 목표");
+        return parts.isEmpty() ? "" : " · " + String.join("·", parts);
+    }
+
     private void open(int i) {
         if (!app.isUnlocked(i)) {
-            status = "잠긴 행성이에요. 이전 레벨을 별 1개 이상으로 클리어하세요.";
+            status = "잠긴 " + noun(levels.get(i).theme) + "이에요. 이전 레벨을 별 1개 이상으로 클리어하세요.";
             return;
         }
         app.startLevel(i);

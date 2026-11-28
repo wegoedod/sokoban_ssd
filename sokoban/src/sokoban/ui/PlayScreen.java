@@ -49,6 +49,10 @@ final class PlayScreen implements Screen {
     private int resScore, resStars;
     private boolean newRecord;
     private final Runnable editorReturn;
+    /** 무대 연출: 목적지(행성·웜홀·정거장)와 그 배경. */
+    private final PlanetArt.Planet destination;
+    private final WorldStyle style;
+    private double timeMs;
 
     PlayScreen(App app, int levelIndex) {
         this(app, levelIndex, app.repo.levels.get(levelIndex), null);
@@ -66,6 +70,12 @@ final class PlayScreen implements Screen {
         this.layerFocus = app.settings.layerFocusDefault();
         this.session = new Session(level, app.config);
         this.flat = level.h == 1;
+        // 무대: 캠페인 레벨은 지도에서 고른 목적지, 편집 맵 테스트는 테마의 첫 목적지
+        this.destination = levelIndex >= 0
+                ? PlanetArt.destinations(app.repo.levels).get(levelIndex)
+                : PlanetArt.destination(level.theme, 0);
+        this.style = WorldStyle.of(level.theme, destination.base());
+        renderer.setPalette(style.wall, style.grid);
         // 첫 3D 레벨(앞 레벨이 모두 한 층)이면 탑뷰에서 시작해 3D 시점으로 확장하는 연출을 건다.
         if (flat) {
             cam.snapToTopView();
@@ -88,6 +98,7 @@ final class PlayScreen implements Screen {
 
     @Override
     public void tick(long dt) {
+        timeMs += dt;
         cam.update(dt);
         renderer.tickEffects(dt);
         if (blocked != null) {
@@ -327,6 +338,7 @@ final class PlayScreen implements Screen {
 
     @Override
     public void paint(Graphics2D g, int w, int h) {
+        style.paintBackdrop(g, w, h, timeMs);
         Rectangle area = boardArea(w, h);
         IsoRenderer.Anim anim = animStep == null ? null
                 : new IsoRenderer.Anim(animStep, Math.min(1.0, (double) animElapsed / animationMillis()));
@@ -366,7 +378,8 @@ final class PlayScreen implements Screen {
         g.setFont(Theme.font(Font.PLAIN, 14f));
         g.setColor(Theme.TEXT_DIM);
         g.drawString(editorReturn != null ? "편집 맵 테스트 · Esc 메뉴에서 편집으로 복귀 · 기록 저장 없음"
-                : "★★★ " + Scoring.limit(level.optimalMoves, r3) + "수 이하   ★★ "
+                : destination.name() + " · " + level.theme.label + "   ★★★ "
+                + Scoring.limit(level.optimalMoves, r3) + "수 이하   ★★ "
                 + Scoring.limit(level.optimalMoves, r2) + "수 이하", 24, 64);
 
         g.setFont(Theme.font(Font.BOLD, 20f));

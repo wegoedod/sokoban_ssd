@@ -1,24 +1,15 @@
 id: L14
-name: 깊은 구멍
-optimalMoves: 21
-solution: TTRDDUUTDDLDRRLBBLBRR
+name: 크레이터 웜홀
+theme: wormhole
+optimalMoves: 8
+solution: RRRRRDRR
 layer 0
-@--#
---#-
-----
----.
+@-$A###
+#######
+#######
+#######
 layer 1
-$O--
-----
-----
-----
-layer 2
-----
--$--
-----
-----
-layer 3
-----
--$-#
-----
----.
+#######
+#######
+AO--###
+##-$-.-

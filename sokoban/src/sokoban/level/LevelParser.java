@@ -3,6 +3,7 @@ package sokoban.level;
 import sokoban.core.Direction;
 import sokoban.core.GameState;
 import sokoban.core.Level;
+import sokoban.core.LevelTheme;
 import sokoban.core.Magnet;
 import sokoban.core.TileType;
 
@@ -27,6 +28,7 @@ import java.util.TreeMap;
  * star3: 1.2             (선택, 별 기준 덮어쓰기)
  * star2: 1.6             (선택)
  * pull: true              (선택, 상자 당기기 허용. 기본 false)
+ * theme: station          (선택, planet|wormhole|station. 없으면 기믹으로 고른다)
  * layer 0
  * @$-.
  * </pre>
@@ -123,7 +125,15 @@ public final class LevelParser {
             throw new LevelFormatException(source, metaLine.get("star2"), "star2는 star3 이상이어야 한다.");
         }
         boolean pull = boolMeta(source, meta, metaLine, "pull", false);
-        Set<String> known = Set.of("id", "name", "optimalMoves", "solution", "star3", "star2", "pull");
+        LevelTheme theme = null;
+        if (meta.containsKey("theme")) {
+            theme = LevelTheme.parse(meta.get("theme"));
+            if (theme == null) {
+                throw new LevelFormatException(source, metaLine.get("theme"),
+                        "'theme'는 planet, wormhole, station 중 하나여야 한다: '" + meta.get("theme") + "'");
+            }
+        }
+        Set<String> known = Set.of("id", "name", "optimalMoves", "solution", "star3", "star2", "pull", "theme");
         for (String k : meta.keySet()) {
             if (!known.contains(k) && !k.startsWith("magnet.")) {
                 throw new LevelFormatException(source, metaLine.get(k), "알 수 없는 메타데이터 '" + k + "'");
@@ -281,7 +291,7 @@ public final class LevelParser {
         if (!magnets.isEmpty() || magnetSwitches > 0) gimmicks.put("magnet", magnets.size() + magnetSwitches);
         int[] orders = orderLine.isEmpty() ? null : goalOrder;
         return new Level(id, name, w, d, h, tiles, init, opt, solution, s3, s2, gimmicks, source,
-                pull, partner, portalChar, orders, magnets);
+                pull, partner, portalChar, orders, magnets, theme);
     }
 
     private static boolean boolMeta(String source, Map<String, String> meta, Map<String, Integer> metaLine,

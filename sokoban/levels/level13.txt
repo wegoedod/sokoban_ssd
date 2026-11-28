@@ -1,24 +1,19 @@
 id: L13
-name: 구멍과 목표
+name: 두 개의 문
+theme: wormhole
 optimalMoves: 17
-solution: UUTLTRLURTRBDDTDB
+solution: DRRRRRLLLLLDRRRRR
 layer 0
-----
--$--
-----
--#@#
+@----
+-$-A-
+-$--B
+#####
+#####
+#####
 layer 1
----.
---$-
-----
--#-.
-layer 2
-O-$-
-#---
-----
-----
-layer 3
-----
-----
-----
-----
+#####
+#####
+#####
+#####
+A--.-
+B-.--

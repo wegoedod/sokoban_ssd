@@ -1,0 +1,16 @@
+id: L33
+name: 최종 관문
+theme: station
+optimalMoves: 19
+solution: RDDRULTUBDTDLBRRRRR
+magnet.0,1,0: +X,7
+layer 0
+@S1---#
+M-$---I
+-----A#
+------#
+layer 1
+--###A2
+--#####
+--#####
+--#####

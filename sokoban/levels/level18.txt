@@ -1,24 +1,25 @@
 id: L18
-name: 마지막 방
-optimalMoves: 27
-solution: ULTLBDRDRUUTUBBLLDRDBLTTUTD
+name: 깊은 구멍
+theme: planet
+optimalMoves: 21
+solution: TTRDDUUTDDLDRRLBBLBRR
 layer 0
-##.
---#
----
-$O-
+@--#
+--#-
+----
+---.
 layer 1
----
--$.
----
----
+$O--
+----
+----
+----
 layer 2
-#--
-$--
--$@
----
+----
+-$--
+----
+----
 layer 3
-#--
----
--##
-.-#
+----
+-$-#
+----
+---.

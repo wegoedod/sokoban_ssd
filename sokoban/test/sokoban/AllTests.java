@@ -6,6 +6,7 @@ import sokoban.core.Direction;
 import sokoban.core.Engine;
 import sokoban.core.GameState;
 import sokoban.core.Level;
+import sokoban.core.LevelTheme;
 import sokoban.core.Scoring;
 import sokoban.core.Session;
 import sokoban.core.StepResult;
@@ -98,6 +99,8 @@ public final class AllTests {
         test("카메라: 시점 초기화가 기울기까지 되돌림", sokoban.ui.CameraTest::resetViewRestoresDefaultTilt);
         test("한글 입력기: 자모 키를 영문 단축키로 보정", sokoban.ui.CameraTest::koreanImeKeysMapToPhysicalKeys);
         test("출고 레벨: 1~3단계는 2D, 4단계부터 3D", AllTests::shippedLevelStructure);
+        test("레벨 테마: 파일 값·기믹으로 고르기·잘못된 값 거부", AllTests::levelThemeParsing);
+        test("출고 레벨 테마: 기믹과 무대가 맞는다(행성·웜홀·우주정거장)", AllTests::shippedLevelThemes);
         test("렌더: 맨 위층에서도 층 강조가 화면을 바꿈", sokoban.ui.RenderTest::layerFocusChangesEvenOnTopLayer);
         test("렌더: 층 강조는 위층을 흐리게 하고 끄면 복원", sokoban.ui.RenderTest::layerFocusDimsUpperLayersAndRestores);
         test("렌더: 2D 레벨은 층 강조 영향 없음", sokoban.ui.RenderTest::layerFocusDoesNothingOnFlatLevel);
@@ -117,6 +120,8 @@ public final class AllTests {
         test("우주 지도: 카메라 수렴(프레임 속도 무관)", sokoban.ui.SpaceMapTest::cameraConverges);
         test("우주 지도: 행성 이름(지구 시작, 모자라면 자동)", sokoban.ui.SpaceMapTest::planetNames);
         test("우주 지도: 그린 뒤 변환·클립 보존(회귀)", sokoban.ui.SpaceMapTest::drawingKeepsGraphicsState);
+        test("우주 지도: 테마별 목적지(지구·웜홀·안드로메다 정거장)", sokoban.ui.SpaceMapTest::themedDestinations);
+        test("무대 배경: 테마마다 그려지고 그래픽 상태 보존", sokoban.ui.SpaceMapTest::worldBackdrops);
         test("포탈: 플레이어가 들어가면 짝 칸으로 전송, 도착 직후엔 재전송 없음", AllTests::portalPlayerTeleport);
         test("포탈: 상자를 밀어 넣으면 짝 칸으로 전송", AllTests::portalBoxTeleport);
         test("포탈: 짝 칸이 막혀 있으면 들어갈 수 없다(플레이어·상자)", AllTests::portalExitBlocked);
@@ -781,7 +786,7 @@ public final class AllTests {
         GameConfig cfg = GameConfig.load(Path.of("config", "game.properties"));
         LevelRepository repo = LevelRepository.load(Path.of("levels"), cfg);
         check(repo.errors.isEmpty(), "레벨 오류: " + repo.errors);
-        eq(21, repo.levels.size(), "출고 레벨 수");
+        eq(33, repo.levels.size(), "출고 레벨 수");
         int first3D = -1;
         for (int i = 0; i < repo.levels.size(); i++) {
             Level l = repo.levels.get(i);
@@ -796,6 +801,44 @@ public final class AllTests {
             // campaign.order의 행성 순서는 맵의 난이도가 달라져도 고정된다.
         }
         eq(3, first3D, "첫 3D 레벨은 4단계");
+    }
+
+    /** theme 메타데이터: 값이 있으면 그대로, 없으면 기믹으로 고르고, 모르는 값은 줄 번호와 함께 거부한다. */
+    static void levelThemeParsing() throws Exception {
+        eq(LevelTheme.PLANET, LevelParser.parse("t", List.of("id: T", "layer 0", "@$.")).theme);
+        eq(LevelTheme.WORMHOLE, LevelParser.parse("t", List.of("id: T", "layer 0", "@A$A.")).theme);
+        eq(LevelTheme.STATION, LevelParser.parse("t", List.of("id: T", "layer 0", "@$1")).theme);
+        eq(LevelTheme.STATION, LevelParser.parse("t", List.of("id: T", "layer 0", "@S$.")).theme);
+        eq(LevelTheme.STATION, LevelParser.parse("t", List.of("id: T", "theme: station", "layer 0", "@$.")).theme);
+        eq(LevelTheme.PLANET, LevelParser.parse("t", List.of("id: T", "theme: Planet", "layer 0", "@A$A.")).theme);
+        try {
+            LevelParser.parse("t", List.of("id: T", "theme: moon", "layer 0", "@$."));
+            check(false, "모르는 테마는 거부해야 한다");
+        } catch (LevelFormatException e) {
+            check(e.getMessage().contains("2") && e.getMessage().contains("theme"), e.getMessage());
+        }
+        Level l = LevelParser.parse("t", List.of("id: T", "theme: wormhole", "layer 0", "@$."));
+        eq(LevelTheme.WORMHOLE, l.withSolution(2, "RR").theme, "풀이를 기록해도 테마 유지");
+    }
+
+    /**
+     * 출고 레벨은 모두 theme을 적고, 그 값이 쓰인 기믹과 맞아야 한다: 자기장·스위치·순서 목표는 우주정거장,
+     * 포탈은 웜홀, 기믹이 없거나 구멍뿐이면 행성. 첫 레벨은 행성(지구)이고 세 테마가 모두 나온다.
+     */
+    static void shippedLevelThemes() throws Exception {
+        LevelRepository repo = LevelRepository.load(Path.of("levels"), GameConfig.defaults());
+        check(repo.errors.isEmpty(), "레벨 오류: " + repo.errors);
+        java.util.EnumSet<LevelTheme> used = java.util.EnumSet.noneOf(LevelTheme.class);
+        for (Level l : repo.levels) {
+            List<String> lines = Files.readAllLines(Path.of("levels", "level" + l.id.substring(1) + ".txt"));
+            check(lines.stream().anyMatch(s -> s.startsWith("theme:")), l.id + " 는 theme을 적어야 한다");
+            boolean station = l.hasMagnets() || l.hasSequenceGoals();
+            boolean portal = l.gimmicks.containsKey("portal");
+            eq(LevelTheme.infer(station, portal), l.theme, l.id + " " + l.name + " 의 무대");
+            used.add(l.theme);
+        }
+        eq(LevelTheme.PLANET, repo.levels.get(0).theme, "첫 레벨은 행성");
+        eq(3, used.size(), "세 무대가 모두 나온다");
     }
 
     // ---------- 포탈 (레벨 디자인 M-04) ----------

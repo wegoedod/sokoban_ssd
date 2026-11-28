@@ -1,24 +1,25 @@
 id: L15
-name: 세 개의 짐
-optimalMoves: 22
-solution: RRRDTLLTLTRDRUDLBBLBRR
+name: 둘씩 둘
+theme: planet
+optimalMoves: 13
+solution: URBLBLTUTDDBB
 layer 0
---#-
-@---
-----
----.
+---
+-#-
+.--
+---
 layer 1
--###
----#
-.-$-
-----
+---
+---
+-#-
+---
 layer 2
-#-#-
----#
--$--
--$##
+---
+-$-
+$--
+-#-
 layer 3
-----
---.#
-----
-----
+-#-
+---
+-@-
+.--

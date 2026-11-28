@@ -1,0 +1,19 @@
+id: L24
+name: 자력 중계
+theme: station
+optimalMoves: 9
+solution: RDDURURDU
+magnet.0,1,0: +X,5
+magnet.0,3,1: +X,5
+layer 0
+@S-###
+M-A--I
+#B####
+######
+######
+layer 1
+######
+######
+##---#
+M.-$-A
+#B-.-#

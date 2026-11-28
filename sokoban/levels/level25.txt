@@ -1,0 +1,25 @@
+id: L25
+name: 세 개의 짐
+theme: planet
+optimalMoves: 22
+solution: RRRDTLLTLTRDRUDLBBLBRR
+layer 0
+--#-
+@---
+----
+---.
+layer 1
+-###
+---#
+.-$-
+----
+layer 2
+#-#-
+---#
+-$--
+-$##
+layer 3
+----
+--.#
+----
+----

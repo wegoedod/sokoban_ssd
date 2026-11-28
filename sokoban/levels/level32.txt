@@ -1,0 +1,20 @@
+id: L32
+name: 잠긴 길목
+theme: station
+optimalMoves: 35
+solution: UUTUBRBLRTDRDRRDRBRTUULTLBDLLULLDRR
+layer 0
+1---####
+----#.--
+----#---
+----#---
+layer 1
+-$--####
+--$-#$--
+----2$.-
+-@--#--$
+layer 2
+----####
+----#---
+----#---
+----#--.

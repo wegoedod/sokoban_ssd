@@ -9,18 +9,20 @@ import static sokoban.Check.*;
 
 final class AndromedaTest {
     static void register() {
-        test("안드로메다: 17번째 행성·수직 흡인·전원 해제·되돌리기", AndromedaTest::campaign);
+        test("안드로메다: 19번째 레벨(첫 정거장)·수직 흡인·전원 해제·되돌리기", AndromedaTest::campaign);
         test("캠페인 순서: 지정 파일·기본 난이도 정렬·오류 시 원복", AndromedaTest::ordering);
     }
 
     private static void campaign() {
         var repo = LevelRepository.load(Path.of("levels"), GameConfig.defaults());
         check(repo.errors.isEmpty(), repo.errors.toString());
-        Level level = repo.levels.get(16);
-        eq("L17", level.id);
+        Level level = repo.levels.get(18);
+        eq("L19", level.id);
+        eq(LevelTheme.STATION, level.theme);
         eq("안드로메다 관문", level.name);
         eq(3, level.h);
-        eq(1L, repo.levels.stream().filter(Level::hasMagnets).count());
+        // 자기장 레벨: 안드로메다 관문·전원 차단·자석 열쇠·자기 함정·자력 중계·최종 관문
+        eq(List.of("L19", "L20", "L22", "L23", "L24", "L33"), repo.levels.stream().filter(Level::hasMagnets).map(l -> l.id).toList());
         var session = new Session(level, GameConfig.defaults());
         StepResult on = session.move(Direction.RIGHT);
         notNull(on);
