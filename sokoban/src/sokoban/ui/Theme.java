@@ -25,6 +25,8 @@ final class Theme {
     static final Color WALL = new Color(0x7d8bb3);
     static final Color BLOCK = new Color(0xe8a24a);
     static final Color BLOCK_ON_GOAL = new Color(0x5fd08a);
+    static final Color IRON = new Color(0xb7cedb);
+    static final Color MAGNET = new Color(0xf18b91);
     static final Color GOAL = new Color(0xffd45a);
     static final Color HOLE = new Color(0x2a1f3d);
     // 새 타일 색: 블록(주황)·플레이어(청록)·목표(노랑)와 겹치지 않게 잡았다

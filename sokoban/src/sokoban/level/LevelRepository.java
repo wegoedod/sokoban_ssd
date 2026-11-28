@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
-/** 레벨 디렉터리를 읽어 난이도(D) 오름차순 목록을 만든다 (FR-5.5). 오류 레벨은 목록에서 제외하고 오류를 모은다. */
+/** 난이도순으로 읽되 campaign.order가 있으면 행성별 캠페인 순서를 유지한다. */
 public final class LevelRepository {
     public final List<Level> levels;
     public final List<Double> difficulty;
@@ -61,8 +61,32 @@ public final class LevelRepository {
         // D 오름차순, 같으면 파일 이름 순서(안정 정렬)
         List<Level> sorted = new ArrayList<>(loaded);
         sorted.sort(Comparator.comparingDouble(l -> Difficulty.score(l, cfg)));
+        applyCampaignOrder(dir.resolve("campaign.order"), sorted, errors);
         List<Double> ds = new ArrayList<>();
         for (Level l : sorted) ds.add(Difficulty.score(l, cfg));
         return new LevelRepository(List.copyOf(sorted), List.copyOf(ds), List.copyOf(errors));
+    }
+
+    /** 맵 교체로 난이도가 달라져도 기존 행성과 진행 기록의 연결이 바뀌지 않는다. */
+    private static void applyCampaignOrder(Path file, List<Level> levels, List<String> errors) {
+        if (!Files.isRegularFile(file)) return;
+        try {
+            Set<String> seen = new HashSet<>();
+            List<Level> ordered = new ArrayList<>();
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                String id = line.trim();
+                if (id.isEmpty() || id.startsWith("#")) continue;
+                if (!seen.add(id)) throw new IOException("중복 레벨 id: " + id);
+                Level level = levels.stream().filter(l -> l.id.equals(id)).findFirst().orElse(null);
+                if (level == null) throw new IOException("없는 레벨 id: " + id);
+                ordered.add(level);
+            }
+            // 새 사용자 레벨은 기존 캠페인 뒤에 난이도순으로 이어 붙인다.
+            for (Level level : levels) if (!seen.contains(level.id)) ordered.add(level);
+            levels.clear();
+            levels.addAll(ordered);
+        } catch (IOException e) {
+            errors.add(file + ": 캠페인 순서를 읽지 못했다 (" + e.getMessage() + ")");
+        }
     }
 }

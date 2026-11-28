@@ -31,6 +31,8 @@ public record BlockReason(Kind kind, int x, int y, int z) {
         /** 플레이어가 아직 잠긴 순서 목표 칸으로 들어가려 한다(앞 번호 목표가 비어 있음). 막은 칸은 그 목표 칸이다. */
         LOCKED_GOAL,
         /** 상자를 아직 잠긴 순서 목표 칸으로 밀려 한다(앞 번호 목표가 비어 있음). 막은 칸은 그 목표 칸이다. */
-        PUSH_LOCKED_GOAL
+        PUSH_LOCKED_GOAL,
+        FORCE_LOOP,
+        MAGNET_HELD
     }
 }

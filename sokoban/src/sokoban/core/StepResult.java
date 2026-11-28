@@ -14,10 +14,22 @@ package sokoban.core;
  * @param playerVia       플레이어가 들어간 포탈 칸(포탈을 안 탔으면 -1). 전송 연출에 쓴다
  * @param blockVia        블록이 들어간 포탈 칸(포탈을 안 탔으면 -1)
  * @param openedGoalOrder 이 턴에 새로 열린 순서 목표 번호(열린 목표가 없으면 0). 연출·안내에 쓴다
+ * @param phases          자동 이동이 있는 턴의 순차 모션. 첫 항목은 수동 이동, 뒤는 철 상자 흡인이다
  */
 public record StepResult(GameState state, Direction dir, int playerFrom, int playerTo,
                          int blockFrom, int blockTo, boolean blockVanished, boolean cleared,
-                         int playerVia, int blockVia, int openedGoalOrder) {
+                         int playerVia, int blockVia, int openedGoalOrder, java.util.List<StepResult> phases) {
+
+    public StepResult {
+        phases = java.util.List.copyOf(phases);
+    }
+
+    public StepResult(GameState state, Direction dir, int playerFrom, int playerTo,
+                      int blockFrom, int blockTo, boolean blockVanished, boolean cleared,
+                      int playerVia, int blockVia, int openedGoalOrder) {
+        this(state, dir, playerFrom, playerTo, blockFrom, blockTo, blockVanished, cleared,
+                playerVia, blockVia, openedGoalOrder, java.util.List.of());
+    }
 
     /** 포탈·순서 목표 정보 없이 만드는 편의 생성자. */
     public StepResult(GameState state, Direction dir, int playerFrom, int playerTo,

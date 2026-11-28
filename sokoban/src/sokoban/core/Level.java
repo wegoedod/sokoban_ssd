@@ -39,6 +39,7 @@ public final class Level {
     public final int sequenceGoalCount;
     /** 순서 번호 → 셀 인덱스(1..sequenceGoalCount). 순서 목표가 없으면 null. */
     private final int[] sequenceCell;
+    public final java.util.List<Magnet> magnets;
 
     public Level(String id, String name, int w, int d, int h, TileType[] tiles, GameState initial,
                  int optimalMoves, String solution, Double star3Ratio, Double star2Ratio,
@@ -68,6 +69,15 @@ public final class Level {
                  int optimalMoves, String solution, Double star3Ratio, Double star2Ratio,
                  Map<String, Integer> gimmicks, String source,
                  boolean pullAllowed, int[] portalPartner, char[] portalChar, int[] goalOrder) {
+        this(id, name, w, d, h, tiles, initial, optimalMoves, solution, star3Ratio, star2Ratio,
+                gimmicks, source, pullAllowed, portalPartner, portalChar, goalOrder, java.util.List.of());
+    }
+
+    public Level(String id, String name, int w, int d, int h, TileType[] tiles, GameState initial,
+                 int optimalMoves, String solution, Double star3Ratio, Double star2Ratio,
+                 Map<String, Integer> gimmicks, String source,
+                 boolean pullAllowed, int[] portalPartner, char[] portalChar, int[] goalOrder,
+                 java.util.List<Magnet> magnets) {
         if ((portalPartner == null) != (portalChar == null)) {
             throw new IllegalArgumentException("portalPartner와 portalChar는 함께 주거나 함께 null이어야 한다.");
         }
@@ -78,6 +88,12 @@ public final class Level {
             throw new IllegalArgumentException("순서 목표 배열 길이가 셀 수와 다르다.");
         }
         this.pullAllowed = pullAllowed;
+        this.magnets = magnets.stream().sorted(java.util.Comparator.comparingInt(Magnet::cell)).toList();
+        java.util.Set<Integer> devices = new java.util.HashSet<>();
+        for (Magnet m : this.magnets) {
+            if (m.cell() >= tiles.length || tiles[m.cell()] != TileType.MAGNET || !devices.add(m.cell()))
+                throw new IllegalArgumentException("자기장 장치의 위치가 잘못되거나 중복되었습니다.");
+        }
         this.portalPartner = portalPartner == null ? null : portalPartner.clone();
         this.portalChar = portalChar == null ? null : portalChar.clone();
         this.goalOrder = goalOrder == null ? null : goalOrder.clone();
@@ -217,6 +233,12 @@ public final class Level {
 
     public Level withSolution(int optimalMoves, String solution) {
         return new Level(id, name, w, d, h, tiles, initial, optimalMoves, solution,
-                star3Ratio, star2Ratio, gimmicks, source, pullAllowed, portalPartner, portalChar, goalOrder);
+                star3Ratio, star2Ratio, gimmicks, source, pullAllowed, portalPartner, portalChar, goalOrder, magnets);
+    }
+
+    public boolean hasMagnets() {
+        if (!magnets.isEmpty() || initial.magnetOn) return true;
+        for (TileType t : tiles) if (t == TileType.MAGNET_SWITCH) return true;
+        return false;
     }
 }

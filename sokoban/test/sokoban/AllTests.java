@@ -145,6 +145,8 @@ public final class AllTests {
         test("8개 시점의 상하 포함 6방향 클릭", sokoban.ui.MouseMovesTest::allSixCellsAtEveryCameraAngle);
         test("막힌 칸과 상하 밀기 프리뷰", sokoban.ui.MouseMovesTest::blockedClicksAndVerticalPushes);
         test("창 크기·회전·초기화 후 클릭 영역", sokoban.ui.MouseMovesTest::resizeAnimationAndClearedTargets);
+        MagnetTest.register();
+        AndromedaTest.register();
         finish();
     }
 
@@ -791,10 +793,7 @@ public final class AllTests {
                 check(l.h > 1, l.id + " 는 여러 층(3D)이어야 한다");
                 if (first3D < 0) first3D = i;
             }
-            if (i > 0) {
-                check(Difficulty.score(l, cfg) >= Difficulty.score(repo.levels.get(i - 1), cfg),
-                        l.id + " 난이도 순서 (D 비감소)");
-            }
+            // campaign.order의 행성 순서는 맵의 난이도가 달라져도 고정된다.
         }
         eq(3, first3D, "첫 3D 레벨은 4단계");
     }
@@ -1429,7 +1428,6 @@ public final class AllTests {
         LevelRepository repo = LevelRepository.load(Path.of("levels"), cfg);
         check(repo.errors.isEmpty(), "레벨 오류: " + repo.errors);
         check(repo.levels.size() >= 10, "레벨 수 " + repo.levels.size());
-        double prev = -1;
         for (int i = 0; i < repo.levels.size(); i++) {
             Level l = repo.levels.get(i);
             // 저장된 풀이를 엔진으로 재생하면 정확히 optimalMoves 수로 클리어한다
@@ -1445,10 +1443,8 @@ public final class AllTests {
             Solver.Result r = Solver.solve(l, 3_000_000, 60_000);
             eq(Solver.Status.SOLVED, r.status(), l.id);
             eq(l.optimalMoves, r.moves(), l.id + " 솔버 일치");
-            // 난이도 순 정렬
-            double d = repo.difficulty.get(i);
-            check(d >= prev, "D 비감소: " + l.id);
-            prev = d;
+            // 캠페인 순서를 쓰더라도 표시하는 난이도는 실제 맵의 값이다.
+            eq(Difficulty.score(l, cfg), repo.difficulty.get(i), l.id + " 난이도 일치");
         }
     }
 }

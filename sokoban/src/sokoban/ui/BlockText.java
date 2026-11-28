@@ -11,6 +11,8 @@ final class BlockText {
 
     static String text(Level level, GameState state, BlockReason reason) {
         return switch (reason.kind()) {
+            case MAGNET_HELD -> "철 상자 고정됨";
+            case FORCE_LOOP -> "";
             case WALL -> "벽이 막고 있습니다";
             case EDGE -> "격자 밖으로는 나갈 수 없습니다";
             case HOLE -> "구멍은 지나갈 수 없습니다 · 상자로 메워야 합니다";

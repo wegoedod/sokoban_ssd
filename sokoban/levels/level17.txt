@@ -1,24 +1,23 @@
 id: L17
-name: 탑 쌓기
-optimalMoves: 28
-solution: RRDTUDRUBUTULTDBBLUTLTRBBBRD
+name: 안드로메다 관문
+optimalMoves: 6
+solution: RUDDRU
+magnet.3,2,0: +Z,2
 layer 0
-----
-----
---.-
-----
+-------
+-------
+---M---
+-------
+-------
 layer 1
---#-
-----
-@---
--#--
+-------
+---.---
+-@S----
+-------
+-------
 layer 2
---$-
-----
--#$$
-----
-layer 3
---.-
----.
---#-
-----
+-------
+-------
+---I---
+-------
+-------

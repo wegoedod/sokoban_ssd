@@ -86,8 +86,12 @@ public final class EditorIO {
             }
             String t=switch(lv.tile(i)) { case EMPTY->"empty"; case WALL->"wall"; case GOAL->"goal";
                 case HOLE->lv.initial.isHole(i)?"hole":"filled_hole"; case ICE->"ice";
+                case MAGNET_SWITCH->"magnet_switch"; case MAGNET->"magnet";
                 case PORTAL->lv.portalId(i)=='B'?"portal_b":"portal_a"; };
-            d.set(x,y,z,new EditorDocument.Cell(t,lv.initial.player==i?"player":lv.initial.hasBlock(i)?"box":"",Map.of(),Map.of()));
+            Map<String,String> properties=Map.of();
+            for(var magnet:lv.magnets) if(magnet.cell()==i) properties=Map.of("direction",magnet.directionText(),"range",""+magnet.range());
+            String entity=lv.initial.player==i?"player":lv.initial.isIron(i)?"iron_box":lv.initial.hasBlock(i)?"box":"";
+            d.set(x,y,z,new EditorDocument.Cell(t,entity,properties,Map.of()));
         }
         return d;
     }
@@ -97,6 +101,12 @@ public final class EditorIO {
         // Editing invalidates a previously calculated solution, but preserves scoring settings.
         if(d.star3!=null)out.append("star3: ").append(d.star3).append('\n');
         if(d.star2!=null)out.append("star2: ").append(d.star2).append('\n');
+        for(int z=0;z<d.floors;z++) for(int y=0;y<d.depth;y++) for(int x=0;x<d.width;x++) {
+            var cell=d.cell(x,y,z);
+            if(cell.terrain().equals("magnet")) out.append("magnet.").append(x).append(',').append(y).append(',').append(z)
+                    .append(": ").append(cell.terrainProps().getOrDefault("direction","+X"))
+                    .append(',').append(cell.terrainProps().getOrDefault("range","3")).append('\n');
+        }
         for(int z=0;z<d.floors;z++) {
             out.append("layer ").append(z).append('\n');
             for(int y=0;y<d.depth;y++) { for(int x=0;x<d.width;x++) {
@@ -112,12 +122,16 @@ public final class EditorIO {
                     if(!cell.entityProps().isEmpty())
                         throw new IOException("순서 목표 칸의 개체 속성은 게임 TXT에 저장할 수 없습니다"+where+" — 프로젝트로 저장하세요.");
                     symbol=goalOrderSymbol(cell.terrainProps().getOrDefault("order","1"),where);
+                } else if(base.id().equals("magnet")) {
+                    if(!Set.of("direction","range").containsAll(cell.terrainProps().keySet()) || !cell.entityProps().isEmpty())
+                        throw new IOException("자기장 장치는 direction·range만 게임에서 지원합니다"+where);
                 } else if(!cell.terrainProps().isEmpty()||!cell.entityProps().isEmpty()) {
                     throw new IOException("추가 속성은 게임 TXT에 저장할 수 없습니다"+where+" — 프로젝트로 저장하세요.");
                 }
                 if(ent!=null) {
                     if(base.id().equals("empty")) symbol=ent.symbol();
                     else if(base.id().equals("goal") && ent.id().equals("box")) symbol="*";
+                    else if(base.id().equals("goal") && ent.id().equals("iron_box")) symbol="J";
                     else if(base.id().equals("goal") && ent.id().equals("player")) symbol="+";
                     else throw new IOException("게임 TXT로 표현할 수 없는 겹침"+where);
                 }
