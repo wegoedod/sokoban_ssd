@@ -1,5 +1,6 @@
 id: L05
 name: 아래로
+theme: planet
 optimalMoves: 2
 solution: BB
 layer 0

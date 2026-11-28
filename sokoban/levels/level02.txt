@@ -1,5 +1,6 @@
 id: L02
 name: 꺾어 밀기
+theme: planet
 optimalMoves: 5
 solution: RRDRU
 layer 0

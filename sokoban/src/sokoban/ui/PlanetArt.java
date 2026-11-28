@@ -6,22 +6,31 @@ import java.awt.Graphics2D;
 import java.awt.RadialGradientPaint;
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.Arc2D;
+import java.awt.geom.Line2D;
+import java.awt.geom.Rectangle2D;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
-/** 우주 지도에 쓰는 그림: 행성, 로켓, 별 배경. 외부 이미지 없이 Graphics2D 도형만 쓴다 (FR-6.6). */
+import sokoban.core.Level;
+import sokoban.core.LevelTheme;
+
+/** 우주 지도에 쓰는 그림: 행성·웜홀·우주정거장, 로켓, 별 배경. 외부 이미지 없이 Graphics2D 도형만 쓴다 (FR-6.6). */
 final class PlanetArt {
     private PlanetArt() {
     }
 
-    enum Kind { EARTH, MOON, ROCKY, BANDED, RINGED, ICE, BLACKHOLE }
+    enum Kind { EARTH, MOON, ROCKY, BANDED, RINGED, ICE, BLACKHOLE, WORMHOLE, STATION }
 
     /** 행성 하나의 모양. blobs는 단위 원 안의 무늬 {x, y, 반지름}. */
     record Planet(String name, Color base, Kind kind, double[][] blobs) {
     }
 
+    /** 행성 테마 목적지. 레벨 1(첫 행성 레벨)은 지구다. */
     private static final Planet[] PLANETS = {
         make("지구", 0x2f6fd8, Kind.EARTH),
         make("달", 0xb9b9c0, Kind.MOON),
@@ -34,16 +43,37 @@ final class PlanetArt {
         make("천왕성", 0x7fe0e0, Kind.ICE),
         make("해왕성", 0x3d62d6, Kind.ICE),
         make("명왕성", 0xb89c88, Kind.MOON),
+        make("카론", 0xa8b2bd, Kind.MOON),
+        make("에리스", 0xdde8f4, Kind.ICE),
+        make("마케마케", 0xc07a5a, Kind.ROCKY),
         make("프록시마 b", 0xe0703a, Kind.ROCKY),
         make("트라피스트-1e", 0x2fb0a0, Kind.ROCKY),
         make("케플러-452b", 0x3aa05a, Kind.EARTH),
         make("페가수스 51b", 0xe0905a, Kind.BANDED),
-        make("에리스", 0xdde8f4, Kind.ICE),
-        make("안드로메다 관문", 0xa07ae0, Kind.RINGED),
-        make("블랙홀", 0x000000, Kind.BLACKHOLE),
-        make("웜홀", 0x8a63d2, Kind.RINGED),
-        make("쌍성", 0xd08a4a, Kind.BANDED),
-        make("카론", 0xa8b2bd, Kind.MOON),
+    };
+
+    /** 웜홀 테마(포탈 레벨) 목적지. */
+    private static final Planet[] WORMHOLES = {
+        make("웜홀", 0x8a63d2, Kind.WORMHOLE),
+        make("차원의 틈", 0x5f7bff, Kind.WORMHOLE),
+        make("이중 웜홀", 0xc45fe0, Kind.WORMHOLE),
+        make("운석 웜홀", 0x4fb0c6, Kind.WORMHOLE),
+        make("사건의 지평선", 0x000000, Kind.BLACKHOLE),
+        make("쌍성 웜홀", 0xe07a5f, Kind.WORMHOLE),
+    };
+
+    /** 우주정거장 테마(자기장·스위치·순서 목표 레벨) 목적지. */
+    private static final Planet[] STATIONS = {
+        make("안드로메다 정거장", 0xa07ae0, Kind.STATION),
+        make("궤도 발전소", 0xf0a050, Kind.STATION),
+        make("화물 도크", 0x6fb7e0, Kind.STATION),
+        make("자기 연구소", 0xf18b91, Kind.STATION),
+        make("폐기물 처리장", 0x9bc25a, Kind.STATION),
+        make("중계 위성", 0x5fd0d0, Kind.STATION),
+        make("수송 터미널", 0xe07ab8, Kind.STATION),
+        make("정비 갑판", 0xd0a070, Kind.STATION),
+        make("관제 탑", 0x7ad0a0, Kind.STATION),
+        make("오메가 정거장", 0xffd45a, Kind.STATION),
     };
 
     private static Planet make(String name, int rgb, Kind kind) {
@@ -64,7 +94,7 @@ final class PlanetArt {
         return new Planet(name, new Color(rgb), kind, blobs);
     }
 
-    /** 레벨 i(0부터)의 행성. 준비된 행성보다 레벨이 많으면 "미지의 행성 N"을 만들어 쓴다. */
+    /** i번째(0부터) 행성 목적지. 준비된 행성보다 많으면 "미지의 행성 N"을 만들어 쓴다. */
     static Planet planet(int i) {
         if (i < PLANETS.length) return PLANETS[i];
         float hue = (i * 0.137f) % 1f;
@@ -73,6 +103,37 @@ final class PlanetArt {
 
     static int namedPlanets() {
         return PLANETS.length;
+    }
+
+    /** 테마별 ordinal번째(0부터) 목적지. 목록을 넘으면 번호를 붙인 이름을 만든다. */
+    static Planet destination(LevelTheme theme, int ordinal) {
+        return switch (theme) {
+            case PLANET -> planet(ordinal);
+            case WORMHOLE -> ordinal < WORMHOLES.length ? WORMHOLES[ordinal]
+                    : make("미지의 웜홀 " + (ordinal + 1), Color.HSBtoRGB((ordinal * 0.21f) % 1f, 0.5f, 0.9f) & 0xFFFFFF, Kind.WORMHOLE);
+            case STATION -> ordinal < STATIONS.length ? STATIONS[ordinal]
+                    : make("정거장 " + (ordinal + 1) + "호", Color.HSBtoRGB((ordinal * 0.17f) % 1f, 0.45f, 0.9f) & 0xFFFFFF, Kind.STATION);
+        };
+    }
+
+    /** 테마별로 이름이 정해진 목적지 목록. */
+    static List<Planet> named(LevelTheme theme) {
+        return List.of(switch (theme) {
+            case PLANET -> PLANETS;
+            case WORMHOLE -> WORMHOLES;
+            case STATION -> STATIONS;
+        });
+    }
+
+    /**
+     * 캠페인의 레벨마다 목적지를 정한다. 테마별로 앞에서부터 차례로 번호를 매기므로
+     * 첫 행성 레벨은 지구, 첫 웜홀 레벨은 웜홀, 첫 정거장 레벨은 안드로메다 정거장이 된다.
+     */
+    static List<Planet> destinations(List<Level> levels) {
+        int[] seen = new int[LevelTheme.values().length];
+        List<Planet> out = new ArrayList<>(levels.size());
+        for (Level lv : levels) out.add(destination(lv.theme, seen[lv.theme.ordinal()]++));
+        return List.copyOf(out);
     }
 
     // ---------------------------------------------------------------
@@ -91,6 +152,16 @@ final class PlanetArt {
 
         if (p.kind() == Kind.BLACKHOLE) {
             blackHole(g, cx, cy, r, locked);
+            if (locked) lock(g, cx, cy, r);
+            return;
+        }
+        if (p.kind() == Kind.WORMHOLE) {
+            wormhole(g, cx, cy, r, base);
+            if (locked) lock(g, cx, cy, r);
+            return;
+        }
+        if (p.kind() == Kind.STATION) {
+            station(g, cx, cy, r, base, locked);
             if (locked) lock(g, cx, cy, r);
             return;
         }
@@ -204,6 +275,70 @@ final class PlanetArt {
         g.setStroke(new BasicStroke(2f));
         g.setColor(new Color(hot.getRed(), hot.getGreen(), hot.getBlue(), 210));
         g.draw(new Ellipse2D.Double(cx - r * 0.82, cy - r * 0.82, r * 1.64, r * 1.64));
+    }
+
+    /** 웜홀: 바깥에서 안쪽으로 어두워지는 소용돌이 고리. */
+    private static void wormhole(Graphics2D g, double cx, double cy, double r, Color base) {
+        AffineTransform old = g.getTransform();
+        g.rotate(Math.toRadians(-18), cx, cy);
+        Color clear = new Color(base.getRed(), base.getGreen(), base.getBlue(), 0);
+        Color mist = new Color(base.getRed(), base.getGreen(), base.getBlue(), 150);
+        g.setPaint(new RadialGradientPaint((float) cx, (float) cy, (float) (r * 1.25), new float[]{0f, 0.35f, 0.75f, 1f},
+                new Color[]{new Color(4, 4, 14), Theme.shade(base, 0.45), mist, clear}));
+        g.fill(new Ellipse2D.Double(cx - r * 1.25, cy - r * 0.95, r * 2.5, r * 1.9));
+        g.setPaint(null);
+        Color bright = Theme.shade(base, 1.5);
+        for (int k = 0; k < 4; k++) {
+            double f = 1.0 - k * 0.2;
+            g.setStroke(new BasicStroke((float) Math.max(1, r * 0.07 * f)));
+            g.setColor(new Color(bright.getRed(), bright.getGreen(), bright.getBlue(), 200 - k * 35));
+            g.draw(new Arc2D.Double(cx - r * f, cy - r * 0.72 * f, 2 * r * f, 1.44 * r * f,
+                    30 + k * 70, 230, Arc2D.OPEN));
+        }
+        g.setColor(new Color(2, 2, 8));
+        g.fill(new Ellipse2D.Double(cx - r * 0.26, cy - r * 0.2, r * 0.52, r * 0.4));
+        g.setTransform(old);
+    }
+
+    /** 우주정거장: 태양 전지판 두 장 + 고리 + 가운데 허브. */
+    private static void station(Graphics2D g, double cx, double cy, double r, Color base, boolean locked) {
+        Color metal = locked ? new Color(120, 124, 134) : new Color(0xc9d2e3);
+        Color panel = locked ? new Color(70, 74, 84) : new Color(0x2a4f9a);
+        g.setStroke(new BasicStroke((float) Math.max(1.5, r * 0.08)));
+        g.setColor(Theme.shade(metal, 0.8));
+        g.draw(new Line2D.Double(cx - r * 1.45, cy, cx + r * 1.45, cy));
+        for (int side = -1; side <= 1; side += 2) {
+            double px = side < 0 ? cx - r * 1.75 : cx + r * 0.95, pw = r * 0.8, ph = r * 0.62;
+            g.setColor(panel);
+            g.fill(new Rectangle2D.Double(px, cy - ph / 2, pw, ph));
+            g.setStroke(new BasicStroke(1f));
+            g.setColor(new Color(255, 255, 255, 70));
+            for (int k = 1; k < 3; k++) {
+                g.draw(new Line2D.Double(px + pw * k / 3, cy - ph / 2, px + pw * k / 3, cy + ph / 2));
+            }
+            g.draw(new Line2D.Double(px, cy, px + pw, cy));
+            g.setColor(Theme.shade(metal, 0.7));
+            g.draw(new Rectangle2D.Double(px, cy - ph / 2, pw, ph));
+        }
+        g.setStroke(new BasicStroke((float) Math.max(2, r * 0.2)));
+        g.setColor(Theme.shade(metal, 0.65));
+        g.draw(new Ellipse2D.Double(cx - r * 0.85, cy - r * 0.85, r * 1.7, r * 1.7));
+        g.setStroke(new BasicStroke((float) Math.max(1, r * 0.08)));
+        g.setColor(locked ? Theme.shade(metal, 0.8) : base);
+        g.draw(new Ellipse2D.Double(cx - r * 0.85, cy - r * 0.85, r * 1.7, r * 1.7));
+        g.setStroke(new BasicStroke(1.2f));
+        g.setColor(Theme.shade(metal, 0.75));
+        for (int k = 0; k < 4; k++) {
+            double a = Math.PI / 4 + k * Math.PI / 2;
+            g.draw(new Line2D.Double(cx + Math.cos(a) * r * 0.42, cy + Math.sin(a) * r * 0.42,
+                    cx + Math.cos(a) * r * 0.78, cy + Math.sin(a) * r * 0.78));
+        }
+        g.setPaint(new RadialGradientPaint((float) (cx - r * 0.15), (float) (cy - r * 0.18), (float) (r * 0.55),
+                new float[]{0f, 1f}, new Color[]{Theme.shade(metal, 1.15), Theme.shade(metal, 0.55)}));
+        g.fill(new Ellipse2D.Double(cx - r * 0.42, cy - r * 0.42, r * 0.84, r * 0.84));
+        g.setPaint(null);
+        g.setColor(locked ? Theme.shade(metal, 0.5) : base);
+        g.fill(new Ellipse2D.Double(cx - r * 0.14, cy - r * 0.14, r * 0.28, r * 0.28));
     }
 
     private static void lock(Graphics2D g, double cx, double cy, double r) {

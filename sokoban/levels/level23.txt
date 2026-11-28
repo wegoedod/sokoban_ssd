@@ -1,0 +1,14 @@
+id: L23
+name: 자기 함정
+theme: station
+optimalMoves: 7
+solution: TRRBDUL
+magnet.0,2,0: +X,5
+layer 0
+@S----
+--$###
+M.O--I
+layer 1
+---###
+######
+######

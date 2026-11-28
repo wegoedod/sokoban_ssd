@@ -1,0 +1,25 @@
+id: L26
+name: 다락과 지하
+theme: planet
+optimalMoves: 22
+solution: LUUTTULDTRRURDLLBBBLTT
+layer 0
+----
+---#
+--#-
+--@#
+layer 1
+-#-#
+$$--
+---$
+---#
+layer 2
+----
+$---
+.---
+O---
+layer 3
+----
+.---
+---.
+--#-

@@ -1,5 +1,6 @@
 id: L06
 name: 계단식
+theme: planet
 optimalMoves: 5
 solution: RTLTR
 layer 0

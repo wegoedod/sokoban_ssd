@@ -1,5 +1,6 @@
 id: L07
 name: 모서리 돌기
+theme: planet
 optimalMoves: 7
 solution: LDDTDBB
 layer 0

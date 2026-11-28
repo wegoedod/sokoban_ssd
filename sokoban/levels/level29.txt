@@ -1,0 +1,20 @@
+id: L29
+name: 구멍 열쇠
+theme: station
+optimalMoves: 29
+solution: RDRRLDDRUDLLUURRRRLLTTLBLBRRR
+layer 0
+@1--###
+--$-O23
+-$-$###
+----###
+layer 1
+----###
+--$-###
+----###
+----###
+layer 2
+----###
+----###
+----###
+----###

@@ -1,5 +1,6 @@
 id: L03
 name: 두 개의 짐
+theme: planet
 optimalMoves: 4
 solution: RLDR
 layer 0

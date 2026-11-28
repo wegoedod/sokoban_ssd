@@ -58,6 +58,14 @@ final class IsoRenderer {
     private long effectMillis;
 
     /** 화면 효과용 시계. 턴·판정·상자 위치에는 영향을 주지 않는다. */
+    /** 무대(테마)별 벽·격자 색. 기본은 {@link Theme}의 색이다. */
+    private Color wallColor = Theme.WALL, gridColor = Theme.GRID;
+
+    void setPalette(Color wall, Color grid) {
+        wallColor = wall;
+        gridColor = grid;
+    }
+
     void tickEffects(long dt) {
         effectMillis = (effectMillis + Math.max(0, dt)) % 6600;
     }
@@ -269,7 +277,7 @@ final class IsoRenderer {
             final double x = lv.x(idx), y = lv.y(idx), z = lv.z(idx);
             final double key = depth(x + 0.5, y + 0.5, layerBase(z) + 0.5);
             switch (tt) {
-                case WALL -> items.add(new Item(key, 0, () -> cube(g, x, y, z, Theme.WALL, 0.55f)));
+                case WALL -> items.add(new Item(key, 0, () -> cube(g, x, y, z, wallColor, 0.55f)));
                 case HOLE -> {
                     boolean open = st.isHole(idx)
                             || (anim != null && vanish && idx == pushedTo && anim.t() < 1);
@@ -428,9 +436,9 @@ final class IsoRenderer {
     // ---------- 배경 보조선 ----------
 
     private void floorGrid(Graphics2D g, Level lv) {
-        g.setColor(alpha(Theme.GRID, 0.07f));
+        g.setColor(alpha(gridColor, 0.07f));
         g.fill(poly(pt(0, 0, 0), pt(lv.w, 0, 0), pt(lv.w, lv.d, 0), pt(0, lv.d, 0)));
-        g.setColor(alpha(Theme.GRID, 0.28f));
+        g.setColor(alpha(gridColor, 0.28f));
         g.setStroke(new BasicStroke(1f));
         for (int x = 0; x <= lv.w; x++) line(g, pt(x, 0, 0), pt(x, lv.d, 0));
         for (int y = 0; y <= lv.d; y++) line(g, pt(0, y, 0), pt(lv.w, y, 0));
@@ -443,7 +451,7 @@ final class IsoRenderer {
         for (int i = 1; i < 4; i++) {
             if (depth(c[i][0], c[i][1], 0) < depth(c[far][0], c[far][1], 0)) far = i;
         }
-        g.setColor(alpha(Theme.GRID, 0.22f));
+        g.setColor(alpha(gridColor, 0.22f));
         g.setStroke(new BasicStroke(1f));
         for (int k = -1; k <= 1; k++) {
             double[] q = c[Math.floorMod(far + k, 4)];
@@ -477,7 +485,7 @@ final class IsoRenderer {
         for (int layer = 0; layer < lv.h; layer++) {
             double z = layerBase(layer);
             g.setStroke(new BasicStroke(.8f));
-            g.setColor(alpha(Theme.GRID, layer == currentLayer ? .27f : .13f));
+            g.setColor(alpha(gridColor, layer == currentLayer ? .27f : .13f));
             if (layer > 0) g.draw(poly(pt(0, 0, z), pt(lv.w, 0, z), pt(lv.w, lv.d, z), pt(0, lv.d, z)));
             double[] mark = pt(left[0], left[1], z);
             line(g, new double[]{mark[0] - 5, mark[1]}, mark);

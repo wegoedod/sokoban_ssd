@@ -1,24 +1,15 @@
 id: L12
-name: 엇갈림
-optimalMoves: 18
-solution: UBUTDDRTUULLURTRBB
+name: 상자 전송
+theme: wormhole
+optimalMoves: 7
+solution: RRRRURD
 layer 0
-#--.
--#--
----#
-----
+@-$A#
+#####
+#####
+#####
 layer 1
-----
-#--#
---$#
---@-
-layer 2
-----
-.---
----$
-----
-layer 3
-----
-----
-----
-----
+#####
+##---
+-A---
+###.#

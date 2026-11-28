@@ -1,5 +1,6 @@
 id: L09
 name: 첫 구멍
+theme: planet
 optimalMoves: 8
 solution: TDDLTLBB
 layer 0

@@ -1,0 +1,25 @@
+id: L28
+name: 막다른 방
+theme: planet
+optimalMoves: 27
+solution: ULTLBDRDRUUTUBBLLDRDBLTTUTD
+layer 0
+##.
+--#
+---
+$O-
+layer 1
+---
+-$.
+---
+---
+layer 2
+#--
+$--
+-$@
+---
+layer 3
+#--
+---
+-##
+.-#

@@ -1,19 +1,24 @@
 id: L20
-name: 쌍둥이 포탈
-optimalMoves: 35
-solution: RTURTDLLBDDTULBUTRBTTLDDLLLTLBRUBLD
+name: 전원 차단
+theme: station
+optimalMoves: 14
+solution: RRLLTDDBRTUBRD
+magnet.1,2,1: +X,5
 layer 0
-----
-----
--.--
-@-#-
+#######
+#######
+##.####
+#######
+#######
 layer 1
--#--
----A
----$
--$#-
+#######
+#@S--##
+#M---I#
+#-$--##
+###.###
 layer 2
-#--#
-.---
-##--
-A--#
+-------
+-------
+-------
+-------
+-------

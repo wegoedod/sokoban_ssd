@@ -1,23 +1,25 @@
 id: L17
-name: 안드로메다 관문
-optimalMoves: 6
-solution: RUDDRU
-magnet.3,2,0: +Z,2
+name: 엇갈림
+theme: planet
+optimalMoves: 18
+solution: UBUTDDRTUULLURTRBB
 layer 0
--------
--------
----M---
--------
--------
+#--.
+-#--
+---#
+----
 layer 1
--------
----.---
--@S----
--------
--------
+----
+#--#
+--$#
+--@-
 layer 2
--------
--------
----I---
--------
--------
+----
+.---
+---$
+----
+layer 3
+----
+----
+----
+----

@@ -1,5 +1,6 @@
 id: L04
 name: 위로
+theme: planet
 optimalMoves: 2
 solution: TT
 layer 0

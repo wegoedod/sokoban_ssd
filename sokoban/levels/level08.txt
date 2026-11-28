@@ -1,5 +1,6 @@
 id: L08
 name: 기둥 옆
+theme: planet
 optimalMoves: 10
 solution: DLULDDBDTT
 layer 0

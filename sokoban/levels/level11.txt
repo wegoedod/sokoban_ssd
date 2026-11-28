@@ -1,24 +1,13 @@
 id: L11
-name: 우물
-optimalMoves: 14
-solution: UURBBDDLDRBRTT
+name: 웜홀 입문
+theme: wormhole
+optimalMoves: 4
+solution: RRRR
 layer 0
----
---O
----
----
+@-A-
+####
+####
 layer 1
----
-#$-
----
----
-layer 2
--$-
----
----
-#--
-layer 3
----
----
-@--
---.
+####
+####
+A$-.

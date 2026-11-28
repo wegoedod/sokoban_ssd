@@ -154,11 +154,11 @@ public final class SettingsTest {
         for (char c : digits.toCharArray()) o.keyPressed(key(KeyEvent.VK_0 + (c - '0')));
     }
 
-    /** 123456을 넣으면 21개 레벨 모두가 최적 기록(★★★·1000점·최적 이동)으로 저장된다. */
+    /** 123456을 넣으면 33개 레벨 모두가 최적 기록(★★★·1000점·최적 이동)으로 저장된다. */
     public static void testCodeCompletesEveryLevel() throws Exception {
         Path f = Files.createTempFile("astro", ".properties");
         List<Level> levels = shippedLevels();
-        check(levels.size() == 21, "출고 레벨 21개: " + levels.size());
+        check(levels.size() == 33, "출고 레벨 33개: " + levels.size());
         SaveStore save = new SaveStore(f);
         SettingsOverlay o = codeOverlay(save, levels);
         openCodeEntry(o);
